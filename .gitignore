@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+venv/
+.env
+*.tar.xz
+ccpd_subset/
+runs/
+*.pt
