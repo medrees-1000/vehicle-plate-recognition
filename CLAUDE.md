@@ -1,7 +1,7 @@
 # Project
 vehicle-plate-recognition: ALPR pipeline (Ultralytics YOLO plate detector + PaddleOCR).
 Detector trained on a CCPD2019 subset plus US/EU data; evaluated on US/EU plates.
-Source of truth for goals, datasets, metrics and milestones: `docs/PLAN.md`.
+Source of truth for goals, datasets, metrics and milestones: `PLAN.md` (repo root).
 If PLAN.md is missing or stale, stop and say so; do not guess scope.
 
 # Working agreement
@@ -21,7 +21,7 @@ If PLAN.md is missing or stale, stop and say so; do not guess scope.
 
 # Data & Git safety
 - Never commit: datasets, `*.tar.xz`, `*.zip` archives, `*.pt`, `runs/`, `data/`, `.venv/`.
-- Record every dataset's source URL, license, and checksum in `DATA.md` before using it.
+- Record every dataset's source URL, license, and checksum in PLAN.md (Datasets section) before using it.
 - Verify MD5 after every large download.
 
 # Colab
