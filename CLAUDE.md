@@ -31,4 +31,6 @@ If PLAN.md is missing or stale, stop and say so; do not guess scope.
 - Training must be resumable from the latest checkpoint on Drive.
 
 # Commands
-(Filled in after PLAN.md decides the layout: install, test, lint, train, eval.)
+- Install: `uv sync` (add `--extra ocr-paddle` for PaddleOCR)
+- Test: `uv run pytest`
+- Lint, train, eval: set in the milestone that introduces them (M2-M3).

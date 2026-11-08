@@ -1,0 +1,19 @@
+[project]
+name = "alpr"
+version = "0.1.0"
+description = "ALPR pipeline: Ultralytics YOLO plate detector + PaddleOCR"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
+dependencies = []
+
+[project.optional-dependencies]
+ocr-paddle = ["paddleocr", "paddlepaddle"]
+
+[dependency-groups]
+dev = ["pytest"]
+
+[build-system]
+requires = ["uv_build>=0.8,<1"]
+build-backend = "uv_build"

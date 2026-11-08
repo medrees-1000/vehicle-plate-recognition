@@ -6,3 +6,4 @@ venv/
 ccpd_subset/
 runs/
 *.pt
+.venv/

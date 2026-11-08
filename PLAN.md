@@ -81,7 +81,7 @@ Status is updated as milestones finish. Verify column = how the claim is reprodu
 
 ## Milestones checklist
 One at a time; verify, tick, stop.
-- [ ] M0 Setup: pyproject, `src/alpr/`, pytest + fixtures, remove requirements.txt, LICENSE (AGPL-3.0), fill CLAUDE.md Commands
+- [x] M0 Setup: pyproject, `src/alpr/`, pytest + fixtures, remove requirements.txt, LICENSE (AGPL-3.0), fill CLAUDE.md Commands
 - [ ] M1a EDA: plots saved by script/notebook (subset balance, image sizes, bbox sizes, brightness/blur/tilt, label sanity, duplicates)
 - [ ] M1b Data: downloads with MD5, stream-extract CCPD (>= 15k train + 300 held-out, stratified, seed 0), pack archives, UC3M-LP to YOLO (local only), choose Roboflow stage 2 sources + US held-out source, hand-label ~150 US plates, dHash check, freeze test sets
 - [ ] M2 Evaluation harness + baselines: metrics code; shortlist 2-3 baseline detectors, score the best; score PaddleOCR / fast-plate-ocr / EasyOCR on ground-truth crops
