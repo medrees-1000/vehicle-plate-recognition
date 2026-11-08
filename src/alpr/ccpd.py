@@ -10,7 +10,6 @@ import csv
 import hashlib
 import io
 import random
-import shutil
 import tarfile
 import urllib.request
 from collections import Counter, defaultdict
@@ -88,14 +87,26 @@ def file_md5(path: str | Path) -> str:
 def download(url: str, dest: str | Path, md5: str) -> None:
     """Download with resume (HTTP Range), then verify MD5. Skips if dest already matches."""
     dest = Path(dest)
-    if dest.exists() and file_md5(dest) == md5:
-        return
+    if dest.exists():
+        print(f"{dest} exists ({dest.stat().st_size / 1e9:.1f} GB), checking MD5...", flush=True)
+        if file_md5(dest) == md5:
+            return
+        print("MD5 differs, trying to resume the download", flush=True)
     pos = dest.stat().st_size if dest.exists() else 0
     req = urllib.request.Request(url, headers={"Range": f"bytes={pos}-"})
     with urllib.request.urlopen(req) as r:
         # 206 = server honoured the range; anything else means a full body, so start over
-        with open(dest, "ab" if getattr(r, "status", None) == 206 else "wb") as f:
-            shutil.copyfileobj(r, f, 1 << 20)
+        resumed = getattr(r, "status", None) == 206
+        done = pos if resumed else 0
+        total = done + int(r.headers.get("Content-Length") or 0)
+        print(f"downloading from {done / 1e9:.1f} GB of {total / 1e9:.1f} GB", flush=True)
+        with open(dest, "ab" if resumed else "wb") as f:
+            while chunk := r.read(1 << 20):
+                f.write(chunk)
+                done += len(chunk)
+                if done // (1 << 30) != (done - len(chunk)) // (1 << 30):
+                    print(f"  {done / 1e9:.1f} / {total / 1e9:.1f} GB", flush=True)
+    print("verifying MD5...", flush=True)
     got = file_md5(dest)
     if got != md5:
         raise ValueError(f"MD5 mismatch for {dest}: got {got}, expected {md5}")
@@ -103,8 +114,14 @@ def download(url: str, dest: str | Path, md5: str) -> None:
 
 def list_jpgs(archive: str | Path) -> list[str]:
     """Stream the archive once, returning jpg member paths (nothing is extracted)."""
+    names: list[str] = []
     with tarfile.open(archive, "r|xz") as tf:
-        return [m.name for m in tf if m.isfile() and m.name.lower().endswith(".jpg")]
+        for m in tf:
+            if m.isfile() and m.name.lower().endswith(".jpg"):
+                names.append(m.name)
+                if len(names) % 50000 == 0:
+                    print(f"  {len(names)} jpgs listed", flush=True)
+    return names
 
 
 def sample(names: list[str], train_per: int = 2200, heldout: int = 300, seed: int = 0) -> tuple[list[Row], int]:
@@ -167,6 +184,8 @@ def build(archive: str | Path, rows: list[Row], out_tar: str | Path) -> None:
                 info.size = m.size
                 dst.addfile(info, src.extractfile(m))
                 done.add(m.name)
+                if len(done) % 2000 == 0:
+                    print(f"  {len(done)}/{len(picks)} copied", flush=True)
         if missing := set(picks) - done:
             raise ValueError(f"{len(missing)} sampled images not found in archive, e.g. {sorted(missing)[0]}")
         buf = io.StringIO()
