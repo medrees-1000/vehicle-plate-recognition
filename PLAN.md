@@ -5,7 +5,7 @@ Single planning file. Decisions below were agreed in the planning interview. Any
 ## Goal
 - ALPR for US/EU plates: YOLO plate detector + OCR. Image-only.
 - Only detection is trained. OCR is pretrained and evaluated, not trained.
-- Main claim: a detector trained on CCPD (stage 1), then fine-tuned on a US/EU-weighted mix (stage 2), beats a pretrained plate-detector baseline on a held-out US/EU test set.
+- Main goal (not gated): a detector trained on CCPD (stage 1), then fine-tuned on a US/EU-weighted mix (stage 2), beats a pretrained plate-detector baseline on a held-out US/EU test set. Results are reported honestly either way.
 - Domain gap: CCPD is Chinese plates only (blue, province character). It teaches "what a plate looks like" and detection under tilt/weather/blur. It gives no usable Latin OCR labels. Stage 2 closes the gap; an ablation (US/EU only) measures what CCPD adds.
 - Bonus (secondary): a few hundred held-out CCPD images, reading accuracy reported separately with PaddleOCR's Chinese model, no extra training.
 - Pretrained weights everywhere: COCO YOLO nano (small only if nano misses by a clear margin), pretrained PaddleOCR, a pretrained plate-detector baseline.
@@ -18,10 +18,10 @@ Every row needs source URL, license, tier, checksum before use. Rows marked "ver
 
 | Dataset | Role | License / tier | Source / checksum |
 |---|---|---|---|
-| CCPD2019 subset | Stage 1 train + 300 held-out Chinese test | Research-only, tier B (verify exact terms) | Zenodo 15647076, CCPD2019.tar.xz, 13.2 GB, MD5 0dfbca0e6fcb7cb8ea720b0eae94c735 |
+| CCPD2019 subset | Stage 1 train + 300 held-out Chinese test | Zenodo record: CC BY 4.0. Original repo (github.com/detectRecog/CCPD) terms not yet read; handled strictly as research-only, tier B until checked. Committed notebooks: stats and plots only, no sample images | Zenodo 15647076, CCPD2019.tar.xz, 13.2 GB, MD5 0dfbca0e6fcb7cb8ea720b0eae94c735 |
 | UC3M-LP | "Spain (EU)" test, evaluation only. Never train, never share converted copies | Zenodo files: CC BY 4.0 (tier A). Paper record says CC BY-NC-ND, GitHub says ODbL; conflict, so handled strictly | Zenodo 17152029, UC3M-LP.zip, 4.5 GB, MD5 496e3b5e66b78d231f71d85c0e5e11a3 |
-| Roboflow US/EU + 1-2 other CC-BY multi-region sets | Stage 2 train/val (detection boxes, no text) | CC BY 4.0 per uploader (verify each page) | public.roboflow.com/object-detection/license-plates-us-eu; others chosen in M1 |
-| One whole Roboflow US source, held out | US test; ~150 plates hand-labelled by the author | verify | chosen in M1 |
+| Roboflow US/EU + 1-2 other CC-BY multi-region sets | Stage 2 train/val (detection boxes, no text) | CC BY 4.0 per uploader (verify each page) | public.roboflow.com/object-detection/license-plates-us-eu; others chosen in M1b |
+| One whole Roboflow US source, held out | US test; ~150 plates hand-labelled by the author | verify | chosen in M1b |
 | OpenALPR benchmark | Not used: repo is AGPL-3.0 but image license is unstated (tier C) | C | github.com/openalpr/benchmarks |
 | Pretrained baseline detector | Baseline to beat | verify license + training data | shortlist 2-3 in M2 |
 
@@ -51,12 +51,12 @@ Rules:
 - Drive layout: `MyDrive/alpr/{archives,ckpt,runs}`. Raw archives and packed subsets are single `.tar` files.
 - CCPD: stream-extract only the sampled subset, never the whole archive.
 - Training always runs from the VM's local disk: copy the packed subset to `/content` first, never train from the Drive mount. MD5 check after copy.
-- Notebook only mounts Drive, clones the public repo, installs without torch (preinstalled), and calls repo CLIs, e.g. `python -m alpr.train --stage 1 --resume`.
-- Checkpoints saved to Drive every epoch; a restart resumes from the latest `last.pt`. Stage 2 takes stage 1's `best.pt` from Drive.
-- Seeds fixed (`seed=0`), `imgsz=640`, AMP on.
+- Notebooks mount Drive, clone the public repo, install without torch (preinstalled), then explore, train (Ultralytics API), evaluate and report. `src/alpr/` is only data plumbing plus small tested shared helpers. Data prep runs as repo commands (`python -m alpr.ccpd ...`).
+- Checkpoints saved to Drive every epoch; after a disconnect the notebook resumes with `resume=True` from the latest `last.pt`. Stage 2 takes stage 1's `best.pt` from Drive.
+- Parameters and seed (`seed=0`), `imgsz=640`, AMP on, all in a top cell. Notebooks are run with Restart & Run All before committing; executed outputs are kept.
 
 ## Repo structure
-- `pyproject.toml` + `uv` + lockfile. `src/alpr/` installable package. Tests in `tests/` with `tests/fixtures/` (<10 small images).
+- `pyproject.toml` + `uv` + lockfile. `src/alpr/` installable package (data plumbing + shared helpers). `notebooks/` numbered, executed outputs kept. Tests in `tests/` with `tests/fixtures/` (<10 small images).
 - Torch is NOT a dependency on Colab (preinstalled). PaddlePaddle lives in an optional extra (`ocr-paddle`).
 - `requirements.txt` is deleted once everything is migrated (user approved).
 - Public GitHub repo, code only. Weights and demo go to Hugging Face.
@@ -65,36 +65,37 @@ Rules:
 - Exact commands go in CLAUDE.md "Commands" after M0.
 
 ## Pipeline coverage
-Status is updated as milestones finish. Verify column = how the claim is reproduced; every command ends up in the README.
+Status is updated as milestones finish. Verify column = how the claim is reproduced. Verification means running the numbered notebooks in order plus the data-prep commands, all listed in the README.
 
 | Stage | Status | Reason | How to verify |
 |---|---|---|---|
-| EDA | not yet (M1a) | Know the subset before training: balance, sizes, label sanity | script/notebook saves plots to `reports/eda/`: subset balance, image sizes, bbox sizes, brightness/blur/tilt, label sanity, duplicates |
+| EDA | not yet (M1a) | Know the subset before training: balance, sizes, label sanity | run `notebooks/01_eda.ipynb`: subset balance, image sizes, bbox sizes, brightness/blur/tilt, label sanity, duplicates (plots in the executed notebook) |
 | Cleaning | not yet (M1b) | CCPD filenames carry labels; corrupt images/bad boxes must not reach training | cleaning script prints counts dropped per reason; pytest on fixtures |
 | Preprocessing | not yet (M1b) | CCPD filename -> YOLO boxes; Ultralytics letterbox to 640 | conversion script + test; counts printed |
-| Feature engineering | skipped for the detector | CNN learns its own features; hand features would not be available at inference. CCPD filename metadata (tilt, brightness, blur, plate position) is used for stratified sampling and error analysis only, never as model input | sampling script prints strata counts |
-| Split | not yet (M1b) | CCPD train/val by seed; 300 held-out; test sets are whole held-out sources | split script prints sizes; dHash duplicate report is empty |
-| Model selection | not yet (M2-M4) | YOLO nano first, small only on a clear miss; OCR by exact match under latency ceiling | results tables in README |
-| Hyperparameters | not yet (M3-M4) | Ultralytics defaults; limited tuning (free T4), chosen on validation only | configs committed; run command in README |
-| Evaluation | not yet (M2, M4) | Metrics in the Evaluation section | `python -m alpr.eval ...` (final name set in M2) |
-| Error analysis | not yet (M4-M5) | Slice by CCPD metadata, box size, source; failure gallery; OCR error types | script writes slice tables and gallery to `reports/` |
+| Feature engineering | skipped for the detector | CNN learns its own features; hand features would not be available at inference. CCPD filename metadata (tilt, brightness, blur, plate position) is used for stratified sampling and error analysis only, never as model input | sampling script prints strata counts (M1a) |
+| Split | not yet (M1b) | CCPD train/val by seed; 300 held-out; test sets are whole held-out sources | split command prints sizes; dHash duplicate report (notebook, until a shared helper is needed) is empty |
+| Model selection | not yet (M2-M4) | YOLO nano first, small only on a clear miss; OCR by exact match under latency ceiling | results tables in the evaluation notebook, copied to README |
+| Hyperparameters | not yet (M3-M4) | Ultralytics defaults; limited tuning (free T4), chosen on validation only | parameters and seed in the top cell of the training notebook, chosen on validation only |
+| Evaluation | not yet (M2, M4) | Metrics in the Evaluation section | evaluation notebook (number set in M2), using tested metric helpers from `src/alpr` |
+| Error analysis | not yet (M4-M5) | Slice by CCPD metadata, box size, source; failure gallery; OCR error types | error-analysis notebook: slice tables, failure gallery, OCR error types |
 
 ## Milestones checklist
 One at a time; verify, tick, stop.
 - [x] M0 Setup: pyproject, `src/alpr/`, pytest + fixtures, remove requirements.txt, LICENSE (AGPL-3.0), fill CLAUDE.md Commands
-- [ ] M1a EDA: plots saved by script/notebook (subset balance, image sizes, bbox sizes, brightness/blur/tilt, label sanity, duplicates)
-- [ ] M1b Data: downloads with MD5, stream-extract CCPD (>= 15k train + 300 held-out, stratified, seed 0), pack archives, UC3M-LP to YOLO (local only), choose Roboflow stage 2 sources + US held-out source, hand-label ~150 US plates, dHash check, freeze test sets
+- [ ] M1a CCPD + EDA: download CCPD2019 (MD5 check, archive kept on Drive), stream-extract the stratified sample (>= 15k train + 300 held-out, seed 0), pack it, then EDA in notebooks/01_eda.ipynb: plots embedded in the notebook, PNGs also written to Drive (subset balance, image sizes, bbox sizes, brightness/blur/tilt, label sanity, duplicates)
+- [ ] M1b Data: UC3M-LP download (MD5) and YOLO conversion (local only), choose Roboflow stage 2 sources + US held-out source, hand-label ~150 US plates, CCPD cleaning + filename-to-YOLO conversion + split, dHash near-duplicate check, freeze test sets
 - [ ] M2 Evaluation harness + baselines: metrics code; shortlist 2-3 baseline detectors, score the best; score PaddleOCR / fast-plate-ocr / EasyOCR on ground-truth crops
 - [ ] M3 Stage 1: train on CCPD, resumable on Colab
 - [ ] M4 Stage 2: fine-tune on US/EU-weighted mix; US/EU-only ablation; Chinese held-out report; error analysis
 - [ ] M5 Pipeline: detect -> crop -> OCR CLI; final engine choice
 - [ ] M6 Report + deploy: README tables with reproduce commands, ONNX export, minimal Gradio Space (CPU)
 - [ ] M7 (optional, last) Video/webcam inference
+- [ ] M8 (optional) Post-submission cleanup: move training/eval logic from notebooks into src/alpr CLIs, keep notebooks as thin reports, verify results match the tagged submission
 
 Context: progress presentation on 15 Nov 2026; project due December. No scope cuts, no day-by-day schedule. The professor has the dataset and will test claims, so everything done or skipped needs a reason (see Pipeline coverage).
 
 ## Definition of done
-- Gated: main model beats the pretrained baseline on mAP@0.5:0.95 on the US/EU test set, and every claim reproduces from README commands.
+- Gated: every claim reproduces from README commands, and results are reported honestly for all models and engines (including if the baseline wins, with an explanation). Goal, not gated: the main model beats the pretrained baseline on mAP@0.5:0.95 on the US/EU test set. No reading-accuracy floor yet; revisit after M2.
 - Reported, not gated: ablation vs main, Spain (EU), US and Chinese reading accuracy for all three engines, CPU latency.
 - Tests pass; no datasets, weights or `runs/` in git; boxes through M6 ticked; README notes "weights are non-commercial" if tier B data was used and "weights license unstated" for fast-plate-ocr.
 - Hugging Face Space live, stating which engine and weights it uses.

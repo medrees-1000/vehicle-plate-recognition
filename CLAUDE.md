@@ -16,6 +16,7 @@ If PLAN.md is missing or stale, stop and say so; do not guess scope.
 - After code: max 3 lines of explanation.
 - Type hints on all public functions. Validate inputs; handle corrupt images, missing files, bad labels explicitly.
 - Every module has a runnable self-check or a pytest test. Tests use `tests/fixtures/` only (<10 small images).
+- Tests: one test file per module in src/alpr/. Test only data plumbing and shared helpers, not notebooks and not trivial code. Fixtures under 10 small images.
 - Fix root causes; don't silence errors. Seed everything that affects results.
 - Dependencies via `uv` only (never raw pip). Exact commands live under Commands once PLAN.md fixes the layout.
 
@@ -27,10 +28,11 @@ If PLAN.md is missing or stale, stop and say so; do not guess scope.
 # Colab
 - The Colab runtime is remote: local files are not visible to it.
 - Persistent data, checkpoints and runs go to Google Drive (mounted). Copy data to the VM's local disk as one archive before training; never train from many small files on a Drive mount.
-- The notebook only clones the repo and calls repo CLIs. Logic lives in `src/`, not in cells.
-- Training must be resumable from the latest checkpoint on Drive.
+- Notebooks (`notebooks/`, numbered) hold EDA, exploration, pretrained-model use, training (Ultralytics API), evaluation, results and error analysis. `src/alpr/` holds only data plumbing (download, MD5, stream-extract, sampling, packing, filename-to-YOLO conversion) and small tested helpers shared by several notebooks (e.g. exact-match, CER).
+- Training must be resumable: checkpoints saved to Drive every epoch, `resume=True` after a disconnect. Parameters and seed in a top cell. Run Restart & Run All before committing a notebook.
+- Raw `pip install uv` is approved only to bootstrap `uv` on Colab; everything else goes through `uv`.
 
 # Commands
 - Install: `uv sync` (add `--extra ocr-paddle` for PaddleOCR)
 - Test: `uv run pytest`
-- Lint, train, eval: set in the milestone that introduces them (M2-M3).
+- Lint: set in the milestone that introduces it. Train and eval: run the numbered notebooks in `notebooks/`.

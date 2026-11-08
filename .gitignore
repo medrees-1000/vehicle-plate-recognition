@@ -7,3 +7,6 @@ ccpd_subset/
 runs/
 *.pt
 .venv/
+data/
+*.zip
+*.tar
