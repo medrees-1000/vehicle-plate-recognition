@@ -4,6 +4,7 @@ CLI (each step skips if its output already exists):
     python -m alpr.ccpd download DEST
     python -m alpr.ccpd sample ARCHIVE MANIFEST [--cache LISTING ...]
     python -m alpr.ccpd build ARCHIVE MANIFEST OUT_TAR
+    python -m alpr.ccpd split MANIFEST STATS_CSV OUT_CSV [--val 1000] [--heldout 300] [--seed 0]
 """
 import argparse
 import csv
@@ -16,6 +17,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+import numpy as np
 from PIL import Image
 
 URL = "https://zenodo.org/records/15647076/files/CCPD2019.tar.xz?download=1"
@@ -249,6 +251,84 @@ def build(archive: str | Path, rows: list[Row], out_tar: str | Path) -> None:
     part.rename(out_tar)
 
 
+def has_box_gap(label: Label) -> bool:
+    """True if the box and the bounding rectangle of the 4 vertices differ by >10% of the box's longer side."""
+    xs, ys = [v[0] for v in label.vertices], [v[1] for v in label.vertices]
+    x1, y1, x2, y2 = label.bbox
+    gap = max(abs(min(xs) - x1), abs(min(ys) - y1), abs(max(xs) - x2), abs(max(ys) - y2))
+    return gap > 0.1 * max(x2 - x1, y2 - y1)
+
+
+def _quota(total: int) -> dict[str, int]:
+    return {s: total // len(SUBSETS) + (i < total % len(SUBSETS)) for i, s in enumerate(SUBSETS)}
+
+
+def split_by_plate(
+    rows: list[Row], hashes: dict[str, int], heldout: int = 300, val: int = 1000,
+    seed: int = 0, max_dist: int = 6, max_bundle: int = 20,
+) -> list[tuple[str, str, str, str, int, bool]]:
+    """Re-split into heldout/val/train so that no plate, and no near-duplicate image, is on two sides.
+
+    Images are bundled if they share a plate or their dHash Hamming distance is <= max_dist
+    (chains join). Whole bundles are assigned; heldout and val get an equal quota per subset
+    label, and heldout never gets a bundle holding a box/vertices-gap image. `hashes` maps
+    basename to a 64-bit dHash. Returns (member, subset, split, plate, bundle, box_gap) sorted
+    by member. Raises ValueError on a bad name, a missing hash, a bundle above max_bundle,
+    or a quota that cannot be filled exactly.
+    """
+    rows = sorted(rows)
+    n = len(rows)
+    labels = [parse_name(m) for m, _, _ in rows]
+    try:
+        h = np.array([hashes[PurePosixPath(m).name] for m, _, _ in rows], dtype=np.uint64)
+    except KeyError as e:
+        raise ValueError(f"no dHash for {e}") from e
+    parent = list(range(n))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    first: dict[str, int] = {}
+    for i, lab in enumerate(labels):
+        parent[find(i)] = find(first.setdefault(lab.plate, i))
+    for s in range(0, n, 500):
+        d = np.bitwise_count(h[s:s + 500, None] ^ h[None, :])
+        for a, b in zip(*np.nonzero(d <= max_dist)):
+            parent[find(s + int(a))] = find(int(b))
+    groups: dict[int, list[int]] = defaultdict(list)
+    for i in range(n):
+        groups[find(i)].append(i)
+    bundles = sorted(groups.values())  # ordered by first member: deterministic ids
+    if (big := max(map(len, bundles))) > max_bundle:
+        raise ValueError(f"a bundle has {big} images (> {max_bundle}); dHash links chained too far")
+    gap = [has_box_gap(lab) for lab in labels]
+    order = list(range(len(bundles)))
+    random.Random(seed).shuffle(order)
+    side = ["train"] * n
+
+    def fill(name: str, total: int, allowed) -> None:
+        left = _quota(total)
+        for b in order:
+            idx = bundles[b]
+            if side[idx[0]] != "train" or not allowed(idx):
+                continue
+            need = Counter(rows[i][1] for i in idx)
+            if all(c <= left.get(s, 0) for s, c in need.items()):
+                for i in idx:
+                    side[i] = name
+                left = {s: left[s] - need.get(s, 0) for s in left}
+        if short := {s: c for s, c in left.items() if c}:
+            raise ValueError(f"cannot fill {name} quota exactly, missing per label: {short}")
+
+    fill("heldout", heldout, lambda idx: not any(gap[i] for i in idx))
+    fill("val", val, lambda idx: True)
+    bundle_of = {i: b for b, idx in enumerate(bundles) for i in idx}
+    return [(rows[i][0], rows[i][1], side[i], labels[i].plate, bundle_of[i], gap[i]) for i in range(n)]
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="alpr.ccpd")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -264,6 +344,13 @@ def main(argv: list[str] | None = None) -> None:
     b.add_argument("archive")
     b.add_argument("manifest")
     b.add_argument("out")
+    sp = sub.add_parser("split")
+    sp.add_argument("manifest")
+    sp.add_argument("stats")
+    sp.add_argument("out")
+    sp.add_argument("--val", type=int, default=1000)
+    sp.add_argument("--heldout", type=int, default=300)
+    sp.add_argument("--seed", type=int, default=0)
     a = p.parse_args(argv)
 
     if a.cmd == "download":
@@ -279,6 +366,23 @@ def main(argv: list[str] | None = None) -> None:
         write_manifest(rows, a.manifest)
         print(f"dropped unparseable: {dropped}; duplicate files collapsed: {collapsed}")
         print("per subset/split:", dict(Counter((r[1], r[2]) for r in rows)))
+    elif a.cmd == "split":
+        if Path(a.out).exists():
+            print(f"{a.out} exists, skipping")
+            return
+        with open(a.stats, newline="") as f:
+            hashes = {r["base"]: int(r["dhash"], 16) for r in csv.DictReader(f) if r["status"] == "ok"}
+        out = split_by_plate(read_manifest(a.manifest), hashes, a.heldout, a.val, a.seed)
+        part = Path(a.out + ".part")
+        with open(part, "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["member", "subset", "split", "plate", "bundle", "box_gap"])
+            w.writerows(out)
+        part.rename(a.out)
+        print("split sizes:", dict(Counter(r[2] for r in out)), "total", len(out))
+        print("per subset/split:", dict(sorted(Counter((r[1], r[2]) for r in out).items())))
+        print("largest bundles:", Counter(r[4] for r in out).most_common(10))
+        print(f"box_gap images: {sum(r[5] for r in out)}; in heldout: {sum(r[5] for r in out if r[2] == 'heldout')}")
     else:
         if Path(a.out).exists():
             print(f"{a.out} exists, skipping")
