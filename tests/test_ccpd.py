@@ -54,9 +54,9 @@ def _names(per_subset: int, subsets: tuple[str, ...] = ccpd.SUBSETS + (ccpd.EXCL
 
 def test_sample_quotas_disjoint_deterministic() -> None:
     names = _names(10)
-    rows, dropped = ccpd.sample(names, train_per=5, heldout=10, seed=0)
+    rows, dropped, collapsed = ccpd.sample(names, train_per=5, heldout=10, seed=0)
     n = len(ccpd.SUBSETS)
-    assert n == 8 and dropped == 0 and len(rows) == n * 5 + 10
+    assert n == 8 and dropped == 0 and collapsed == 0 and len(rows) == n * 5 + 10
     assert sum(r[2] == "heldout" for r in rows) == 10
     assert {r[1] for r in rows} == set(ccpd.SUBSETS)  # np excluded
     assert len({r[0] for r in rows}) == len(rows)
@@ -85,7 +85,7 @@ def test_list_build_roundtrip(tmp_path: Path) -> None:
         for n in names:
             tf.add(GOOD1, arcname=n)
     assert sorted(ccpd.list_jpgs(archive)) == sorted(names)
-    rows, _ = ccpd.sample(ccpd.list_jpgs(archive), train_per=1, heldout=7)
+    rows, _, _ = ccpd.sample(ccpd.list_jpgs(archive), train_per=1, heldout=7)
     manifest, out = tmp_path / "m.csv", tmp_path / "s.tar"
     ccpd.write_manifest(rows, manifest)
     assert ccpd.read_manifest(manifest) == rows
@@ -126,3 +126,40 @@ def test_load_listing_caches(tmp_path: Path) -> None:
     drive.write_text("")
     with pytest.raises(ValueError, match="empty listing"):
         ccpd.load_listing(archive, [drive])
+
+
+def test_priority_covers_subsets() -> None:
+    assert sorted(ccpd.PRIORITY) == sorted(ccpd.SUBSETS)
+
+
+def test_dedup_keeps_rarest_subfolder() -> None:
+    n = _name(1)
+    names = [f"CCPD2019/{s}/{n}" for s in ("ccpd_tilt", "ccpd_weather", "ccpd_challenge")] + [f"CCPD2019/ccpd_base/{_name(2)}"]
+    for order in (names, names[::-1]):
+        kept, removed = ccpd.dedup(order)
+        assert removed == 2 and kept == sorted([f"CCPD2019/ccpd_weather/{n}", f"CCPD2019/ccpd_base/{_name(2)}"])
+
+
+def test_sample_dedups_across_subsets() -> None:
+    shared = [_name(9000 + j) for j in range(10)]
+    names = _names(20) + [f"CCPD2019/{s}/{b}" for s in ccpd.SUBSETS for b in shared]
+    rows, _, collapsed = ccpd.sample(names, train_per=5, heldout=8, seed=0)
+    assert collapsed == 10 * (len(ccpd.SUBSETS) - 1)
+    assert len({r[0].rsplit("/", 1)[1] for r in rows}) == len(rows)  # train and held-out share no name
+    assert all(r[1] == "ccpd_weather" for r in rows if r[0].rsplit("/", 1)[1] in shared)
+
+
+def test_sample_excludes_np_before_dedup() -> None:
+    # np is not in PRIORITY: dedup would raise KeyError if np names reached it, and a name shared
+    # with another subfolder must not be affected either
+    names = _names(10) + [f"CCPD2019/{ccpd.EXCLUDED}/{_name(5)}", f"CCPD2019/{ccpd.EXCLUDED}/np-only.jpg"]
+    rows, dropped, collapsed = ccpd.sample(names, train_per=5, heldout=8)
+    assert (dropped, collapsed) == (0, 0) and all(ccpd.EXCLUDED not in r[0] for r in rows)
+    with pytest.raises(KeyError):
+        ccpd.dedup([f"CCPD2019/{ccpd.EXCLUDED}/{_name(5)}"])
+
+
+def test_check_unique_message() -> None:
+    rows = [("A/ccpd_db/x.jpg", "ccpd_db", "train"), ("A/ccpd_fn/x.jpg", "ccpd_fn", "heldout")]
+    with pytest.raises(ValueError, match=r"x\.jpg in \['ccpd_db', 'ccpd_fn'\]"):
+        ccpd._check_unique(rows)

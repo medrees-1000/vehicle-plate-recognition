@@ -30,6 +30,7 @@ Rules:
 - Near-duplicate check before freezing: dHash (Pillow), Hamming distance <= 6, test vs all training data (CCPD and stage 2).
 - Baseline: prefer documented training data, do not reject undocumented ones. If the baseline saw test images, that can only inflate its score (the comparison is then conservative); say so in the README.
 - Downloads > 1 GB need user approval first. Raw archives are kept once in `MyDrive/alpr/archives` with MD5 checked.
+- CCPD2019 subfolders overlap: 34,917 basenames occur in more than one subfolder (76,412 of 355,013 files, 21.5%), only outside ccpd_base and ccpd_np. Share of each subfolder's files in a duplicated name: blur 72%, db 67%, fn 67%, rotate 61%, challenge 48%, tilt 35%, weather 1%. Names encode the annotation, so these are very likely the same image (not verified byte-for-byte). Rule: deduplicate by basename before sampling (ccpd_np excluded first); each unique image keeps one subset label by fixed priority, rarest first: weather, rotate, db, blur, fn, tilt, challenge (base last). The subset label is only a sampling stratum; analysis and error slices use filename metadata (tilt, brightness, blur, bbox), not the subset label.
 
 ## Evaluation
 - Detection: mAP@0.5 and mAP@0.5:0.95 on the US/EU test set.
@@ -70,7 +71,7 @@ Status is updated as milestones finish. Verify column = how the claim is reprodu
 | Stage | Status | Reason | How to verify |
 |---|---|---|---|
 | EDA | not yet (M1a) | Know the subset before training: balance, sizes, label sanity | run `notebooks/01_eda.ipynb`: subset balance, image sizes, bbox sizes, brightness/blur/tilt, label sanity, duplicates (plots in the executed notebook) |
-| Cleaning | not yet (M1b) | CCPD filenames carry labels; corrupt images/bad boxes must not reach training | cleaning script prints counts dropped per reason; pytest on fixtures |
+| Cleaning | partly done (M1a: unparseable names, cross-subfolder duplicates); rest M1b | CCPD filenames carry labels; corrupt images/bad boxes must not reach training; the same image appears in several subfolders (see Datasets rules) | sample command prints unparseable and collapsed-duplicate counts; cleaning script prints counts dropped per reason; pytest on fixtures; duplicate analysis in notebooks/01_eda.ipynb |
 | Preprocessing | not yet (M1b) | CCPD filename -> YOLO boxes; Ultralytics letterbox to 640 | conversion script + test; counts printed |
 | Feature engineering | skipped for the detector | CNN learns its own features; hand features would not be available at inference. CCPD filename metadata (tilt, brightness, blur, plate position) is used for stratified sampling and error analysis only, never as model input | sampling script prints strata counts (M1a) |
 | Split | not yet (M1b) | CCPD train/val by seed; 300 held-out; test sets are whole held-out sources | split command prints sizes; dHash duplicate report (notebook, until a shared helper is needed) is empty |
@@ -82,7 +83,7 @@ Status is updated as milestones finish. Verify column = how the claim is reprodu
 ## Milestones checklist
 One at a time; verify, tick, stop.
 - [x] M0 Setup: pyproject, `src/alpr/`, pytest + fixtures, remove requirements.txt, LICENSE (AGPL-3.0), fill CLAUDE.md Commands
-- [ ] M1a CCPD + EDA: download CCPD2019 (MD5 check, archive kept on Drive), stream-extract the stratified sample (2,200 train x 8 subfolders = 17,600, + 300 held-out, seed 0; ccpd_np excluded), pack it, then EDA in notebooks/01_eda.ipynb: plots embedded in the notebook, PNGs also written to Drive (subset balance, image sizes, bbox sizes, brightness/blur/tilt, label sanity, duplicates)
+- [ ] M1a CCPD + EDA: download CCPD2019 (MD5 check, archive kept on Drive), stream-extract the stratified sample (2,200 train per subset label x 8 = 17,600 after basename dedup, + 300 held-out, seed 0; ccpd_np excluded), pack it, then EDA in notebooks/01_eda.ipynb: plots embedded in the notebook, PNGs also written to Drive (subset balance, image sizes, bbox sizes, brightness/blur/tilt, label sanity, duplicates)
 - [ ] M1b Data: UC3M-LP download (MD5) and YOLO conversion (local only), choose Roboflow stage 2 sources + US held-out source, hand-label ~150 US plates, CCPD cleaning + filename-to-YOLO conversion + split, dHash near-duplicate check, freeze test sets
 - [ ] M2 Evaluation harness + baselines: metrics code; shortlist 2-3 baseline detectors, score the best; score PaddleOCR / fast-plate-ocr / EasyOCR on ground-truth crops
 - [ ] M3 Stage 1: train on CCPD, resumable on Colab

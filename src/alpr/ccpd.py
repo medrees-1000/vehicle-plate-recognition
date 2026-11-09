@@ -22,6 +22,8 @@ URL = "https://zenodo.org/records/15647076/files/CCPD2019.tar.xz?download=1"
 MD5 = "0dfbca0e6fcb7cb8ea720b0eae94c735"
 SUBSETS = ("ccpd_base", "ccpd_blur", "ccpd_challenge", "ccpd_db", "ccpd_fn", "ccpd_rotate", "ccpd_tilt", "ccpd_weather")
 EXCLUDED = "ccpd_np"  # no plates in these images
+# CCPD2019 subfolders overlap (same image, same name). One label per image, rarest subfolder first.
+PRIORITY = ("ccpd_weather", "ccpd_rotate", "ccpd_db", "ccpd_blur", "ccpd_fn", "ccpd_tilt", "ccpd_challenge", "ccpd_base")
 
 PROVINCES = ["皖", "沪", "津", "渝", "冀", "晋", "蒙", "辽", "吉", "黑", "苏", "浙", "京", "闽", "赣", "鲁",
              "豫", "鄂", "湘", "粤", "桂", "琼", "川", "贵", "云", "藏", "陕", "甘", "青", "宁", "新", "警", "学", "O"]
@@ -146,27 +148,56 @@ def load_listing(archive: str | Path, caches: list[Path]) -> list[str]:
     return names
 
 
-def sample(names: list[str], train_per: int = 2200, heldout: int = 300, seed: int = 0) -> tuple[list[Row], int]:
+def dedup(names: list[str]) -> tuple[list[str], int]:
+    """One member per basename, kept in the highest-priority subfolder.
+
+    Returns (kept, sorted; number of files removed). Raises KeyError for a subfolder not in PRIORITY.
+    """
+    rank = {s: i for i, s in enumerate(PRIORITY)}
+    best: dict[str, str] = {}
+    for n in sorted(names):  # sorted, so ties resolve deterministically
+        b, r = PurePosixPath(n).name, rank[PurePosixPath(n).parent.name]  # KeyError even without a collision
+        if b not in best or r < rank[PurePosixPath(best[b]).parent.name]:
+            best[b] = n
+    return sorted(best.values()), len(names) - len(best)
+
+
+def _check_unique(rows: list[Row]) -> None:
+    where: dict[str, list[str]] = defaultdict(list)
+    for member, subset, _ in rows:
+        where[PurePosixPath(member).name].append(subset)
+    dups = [f"{b} in {s}" for b, s in where.items() if len(s) > 1]
+    if dups:
+        raise ValueError(f"{len(dups)} duplicate basenames in sample, e.g. " + "; ".join(dups[:5]))
+
+
+def sample(
+    names: list[str], train_per: int = 2200, heldout: int = 300, seed: int = 0
+) -> tuple[list[Row], int, int]:
     """Equal train quota per subset, held-out split evenly across subsets, disjoint.
 
-    Returns (rows, number of unparseable names dropped). Raises if the archive's
-    subfolders differ from SUBSETS (+ EXCLUDED) or a subset is too small.
+    Basenames are deduplicated across subfolders first (see PRIORITY), so train and held-out
+    never share a name. Returns (rows, unparseable names dropped, duplicate files collapsed).
+    Raises if the archive's subfolders differ from SUBSETS (+ EXCLUDED) or a subset is too small.
     """
     seen = Counter(PurePosixPath(n).parent.name for n in names)
     if set(seen) - {EXCLUDED} != set(SUBSETS):
         raise ValueError(f"unexpected subfolders, expected {sorted(SUBSETS)} (+{EXCLUDED}); found {dict(seen)}")
-    by_subset: dict[str, list[str]] = defaultdict(list)
+    valid: list[str] = []
     dropped = 0
     for n in sorted(names):
-        subset = PurePosixPath(n).parent.name
-        if subset == EXCLUDED:
+        if PurePosixPath(n).parent.name == EXCLUDED:  # before dedup: EXCLUDED is not in PRIORITY
             continue
         try:
             parse_name(n)
         except ValueError:
             dropped += 1
             continue
-        by_subset[subset].append(n)
+        valid.append(n)
+    valid, collapsed = dedup(valid)
+    by_subset: dict[str, list[str]] = defaultdict(list)
+    for n in valid:
+        by_subset[PurePosixPath(n).parent.name].append(n)
     rng = random.Random(seed)
     per_heldout, extra = divmod(heldout, len(SUBSETS))
     rows: list[Row] = []
@@ -176,9 +207,8 @@ def sample(names: list[str], train_per: int = 2200, heldout: int = 300, seed: in
         if pick is None:
             raise ValueError(f"{subset}: {len(by_subset[subset])} valid images, need {train_per + n_held}")
         rows += [(n, subset, "heldout" if k < n_held else "train") for k, n in enumerate(pick)]
-    if len({PurePosixPath(r[0]).name for r in rows}) != len(rows):
-        raise ValueError("duplicate basenames in sample")
-    return rows, dropped
+    _check_unique(rows)
+    return rows, dropped, collapsed
 
 
 def write_manifest(rows: list[Row], path: str | Path) -> None:
@@ -245,9 +275,9 @@ def main(argv: list[str] | None = None) -> None:
             return
         names = load_listing(a.archive, [Path(c) for c in a.cache])
         print("subfolders:", dict(Counter(PurePosixPath(n).parent.name for n in names)))
-        rows, dropped = sample(names, a.train_per, a.heldout, a.seed)
+        rows, dropped, collapsed = sample(names, a.train_per, a.heldout, a.seed)
         write_manifest(rows, a.manifest)
-        print(f"dropped unparseable: {dropped}")
+        print(f"dropped unparseable: {dropped}; duplicate files collapsed: {collapsed}")
         print("per subset/split:", dict(Counter((r[1], r[2]) for r in rows)))
     else:
         if Path(a.out).exists():
