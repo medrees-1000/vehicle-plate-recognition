@@ -18,7 +18,7 @@ Every row needs source URL, license, tier, checksum before use. Rows marked "ver
 
 | Dataset | Role | License / tier | Source / checksum |
 |---|---|---|---|
-| CCPD2019 subset | Stage 1 train + 300 held-out Chinese test | Zenodo record: CC BY 4.0. Original repo (github.com/detectRecog/CCPD) terms not yet read; handled strictly as research-only, tier B until checked. Committed notebooks: stats and plots only, no sample images | Zenodo 15647076, CCPD2019.tar.xz, 13.2 GB, MD5 0dfbca0e6fcb7cb8ea720b0eae94c735 |
+| CCPD2019 subset | Stage 1 train + 300 held-out Chinese test | Zenodo record: CC BY 4.0. Original repo (github.com/detectRecog/CCPD) terms not yet read; handled strictly as research-only, tier B until checked. Committed notebooks: stats and plots only, no sample images | Zenodo 15647076, CCPD2019.tar.xz, 13.2 GB, MD5 0dfbca0e6fcb7cb8ea720b0eae94c735; archive has 9 subfolders, 355,013 jpgs: base 199,996, challenge 50,003, tilt 30,216, fn 20,967, blur 20,611, db 10,132, rotate 10,053, weather 9,999, np 3,036 (no plates, excluded) |
 | UC3M-LP | "Spain (EU)" test, evaluation only. Never train, never share converted copies | Zenodo files: CC BY 4.0 (tier A). Paper record says CC BY-NC-ND, GitHub says ODbL; conflict, so handled strictly | Zenodo 17152029, UC3M-LP.zip, 4.5 GB, MD5 496e3b5e66b78d231f71d85c0e5e11a3 |
 | Roboflow US/EU + 1-2 other CC-BY multi-region sets | Stage 2 train/val (detection boxes, no text) | CC BY 4.0 per uploader (verify each page) | public.roboflow.com/object-detection/license-plates-us-eu; others chosen in M1b |
 | One whole Roboflow US source, held out | US test; ~150 plates hand-labelled by the author | verify | chosen in M1b |
@@ -82,7 +82,7 @@ Status is updated as milestones finish. Verify column = how the claim is reprodu
 ## Milestones checklist
 One at a time; verify, tick, stop.
 - [x] M0 Setup: pyproject, `src/alpr/`, pytest + fixtures, remove requirements.txt, LICENSE (AGPL-3.0), fill CLAUDE.md Commands
-- [ ] M1a CCPD + EDA: download CCPD2019 (MD5 check, archive kept on Drive), stream-extract the stratified sample (>= 15k train + 300 held-out, seed 0), pack it, then EDA in notebooks/01_eda.ipynb: plots embedded in the notebook, PNGs also written to Drive (subset balance, image sizes, bbox sizes, brightness/blur/tilt, label sanity, duplicates)
+- [ ] M1a CCPD + EDA: download CCPD2019 (MD5 check, archive kept on Drive), stream-extract the stratified sample (2,200 train x 8 subfolders = 17,600, + 300 held-out, seed 0; ccpd_np excluded), pack it, then EDA in notebooks/01_eda.ipynb: plots embedded in the notebook, PNGs also written to Drive (subset balance, image sizes, bbox sizes, brightness/blur/tilt, label sanity, duplicates)
 - [ ] M1b Data: UC3M-LP download (MD5) and YOLO conversion (local only), choose Roboflow stage 2 sources + US held-out source, hand-label ~150 US plates, CCPD cleaning + filename-to-YOLO conversion + split, dHash near-duplicate check, freeze test sets
 - [ ] M2 Evaluation harness + baselines: metrics code; shortlist 2-3 baseline detectors, score the best; score PaddleOCR / fast-plate-ocr / EasyOCR on ground-truth crops
 - [ ] M3 Stage 1: train on CCPD, resumable on Colab

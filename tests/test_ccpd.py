@@ -55,7 +55,8 @@ def _names(per_subset: int, subsets: tuple[str, ...] = ccpd.SUBSETS + (ccpd.EXCL
 def test_sample_quotas_disjoint_deterministic() -> None:
     names = _names(10)
     rows, dropped = ccpd.sample(names, train_per=5, heldout=10, seed=0)
-    assert dropped == 0 and len(rows) == 7 * 5 + 10
+    n = len(ccpd.SUBSETS)
+    assert n == 8 and dropped == 0 and len(rows) == n * 5 + 10
     assert sum(r[2] == "heldout" for r in rows) == 10
     assert {r[1] for r in rows} == set(ccpd.SUBSETS)  # np excluded
     assert len({r[0] for r in rows}) == len(rows)
@@ -71,8 +72,8 @@ def test_sample_drops_invalid_and_checks_size() -> None:
 
 
 def test_sample_unexpected_subfolder_stops() -> None:
-    with pytest.raises(ValueError, match="ccpd_blur"):
-        ccpd.sample(_names(10, ccpd.SUBSETS + ("ccpd_blur",)), 5, 7)
+    with pytest.raises(ValueError, match="ccpd_foo"):
+        ccpd.sample(_names(10, ccpd.SUBSETS + ("ccpd_foo",)), 5, 7)
     with pytest.raises(ValueError, match="unexpected subfolders"):  # a missing subset
         ccpd.sample(_names(10, ccpd.SUBSETS[1:]), 5, 7)
 
@@ -92,7 +93,8 @@ def test_list_build_roundtrip(tmp_path: Path) -> None:
     with tarfile.open(out) as tf:
         members = tf.getnames()
         packed = list(csv.DictReader(l.decode() for l in tf.extractfile("manifest.csv")))
-    assert len(members) == 15 and len(packed) == 14
+    n = len(rows)  # 8 subsets x 1 train + 7 held-out
+    assert n == 15 and len(members) == n + 1 and len(packed) == n
     assert sum(m.startswith("heldout/") for m in members) == 7
     assert not (tmp_path / "s.tar.part").exists()
     with pytest.raises(ValueError, match="not found"):
@@ -106,3 +108,21 @@ def test_download_md5(tmp_path: Path) -> None:
     ccpd.download(GOOD1.as_uri(), dest, ccpd.file_md5(GOOD1))  # already verified: skip
     with pytest.raises(ValueError, match="MD5 mismatch"):
         ccpd.download(GOOD1.as_uri(), tmp_path / "e.jpg", "0" * 32)
+
+
+def test_load_listing_caches(tmp_path: Path) -> None:
+    names = _names(2)
+    archive = tmp_path / "a.tar.xz"
+    with tarfile.open(archive, "w:xz") as tf:
+        for n in names:
+            tf.add(GOOD1, arcname=n)
+    local, drive = tmp_path / "local.txt", tmp_path / "drive.txt"
+    assert ccpd.load_listing(archive, [local, drive]) == names
+    assert local.exists() and drive.exists() and not list(tmp_path.glob("*.part"))
+    archive.unlink()  # a cache hit must not touch the archive
+    local.unlink()
+    assert ccpd.load_listing(archive, [local, drive]) == names
+    assert local.exists()  # restored from the Drive copy
+    drive.write_text("")
+    with pytest.raises(ValueError, match="empty listing"):
+        ccpd.load_listing(archive, [drive])

@@ -2,7 +2,7 @@
 
 CLI (each step skips if its output already exists):
     python -m alpr.ccpd download DEST
-    python -m alpr.ccpd sample ARCHIVE MANIFEST
+    python -m alpr.ccpd sample ARCHIVE MANIFEST [--cache LISTING ...]
     python -m alpr.ccpd build ARCHIVE MANIFEST OUT_TAR
 """
 import argparse
@@ -20,7 +20,7 @@ from PIL import Image
 
 URL = "https://zenodo.org/records/15647076/files/CCPD2019.tar.xz?download=1"
 MD5 = "0dfbca0e6fcb7cb8ea720b0eae94c735"
-SUBSETS = ("ccpd_base", "ccpd_challenge", "ccpd_db", "ccpd_fn", "ccpd_rotate", "ccpd_tilt", "ccpd_weather")
+SUBSETS = ("ccpd_base", "ccpd_blur", "ccpd_challenge", "ccpd_db", "ccpd_fn", "ccpd_rotate", "ccpd_tilt", "ccpd_weather")
 EXCLUDED = "ccpd_np"  # no plates in these images
 
 PROVINCES = ["皖", "沪", "津", "渝", "冀", "晋", "蒙", "辽", "吉", "黑", "苏", "浙", "京", "闽", "赣", "鲁",
@@ -124,6 +124,28 @@ def list_jpgs(archive: str | Path) -> list[str]:
     return names
 
 
+def load_listing(archive: str | Path, caches: list[Path]) -> list[str]:
+    """Member listing from the first existing cache file, else one streaming pass over the
+    archive. Every missing cache is then written (atomically), before any validation."""
+    names: list[str] = []
+    for c in caches:
+        if c.exists():
+            names = c.read_text().splitlines()
+            if not names:
+                raise ValueError(f"empty listing cache {c}; delete it and rerun")
+            print(f"listing read from {c}: {len(names)} names", flush=True)
+            break
+    else:
+        names = list_jpgs(archive)
+    for c in caches:
+        if not c.exists():
+            part = c.with_name(c.name + ".part")
+            part.write_text("\n".join(names) + "\n")
+            part.rename(c)
+            print(f"listing cached to {c}", flush=True)
+    return names
+
+
 def sample(names: list[str], train_per: int = 2200, heldout: int = 300, seed: int = 0) -> tuple[list[Row], int]:
     """Equal train quota per subset, held-out split evenly across subsets, disjoint.
 
@@ -207,6 +229,7 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--train-per", type=int, default=2200)
     s.add_argument("--heldout", type=int, default=300)
     s.add_argument("--seed", type=int, default=0)
+    s.add_argument("--cache", nargs="*", default=[], help="listing cache files (first existing is read, missing ones written)")
     b = sub.add_parser("build")
     b.add_argument("archive")
     b.add_argument("manifest")
@@ -220,7 +243,7 @@ def main(argv: list[str] | None = None) -> None:
         if Path(a.manifest).exists():
             print(f"{a.manifest} exists, skipping")
             return
-        names = list_jpgs(a.archive)
+        names = load_listing(a.archive, [Path(c) for c in a.cache])
         print("subfolders:", dict(Counter(PurePosixPath(n).parent.name for n in names)))
         rows, dropped = sample(names, a.train_per, a.heldout, a.seed)
         write_manifest(rows, a.manifest)
