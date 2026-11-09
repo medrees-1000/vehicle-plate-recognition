@@ -271,10 +271,10 @@ def split_by_plate(
 
     Images are bundled if they share a plate or their dHash Hamming distance is <= max_dist
     (chains join). Whole bundles are assigned; heldout and val get an equal quota per subset
-    label, and heldout never gets a bundle holding a box/vertices-gap image. `hashes` maps
-    basename to a 64-bit dHash. Returns (member, subset, split, plate, bundle, box_gap) sorted
-    by member. Raises ValueError on a bad name, a missing hash, a bundle above max_bundle,
-    or a quota that cannot be filled exactly.
+    label, and heldout never gets a bundle holding a box/vertices-gap image. A bundle larger
+    than max_bundle goes wholly to train. `hashes` maps basename to a 64-bit dHash. Returns
+    (member, subset, split, plate, bundle, box_gap) sorted by member. Raises ValueError on a
+    bad name, a missing hash, or a quota that cannot be filled exactly.
     """
     rows = sorted(rows)
     n = len(rows)
@@ -302,8 +302,6 @@ def split_by_plate(
     for i in range(n):
         groups[find(i)].append(i)
     bundles = sorted(groups.values())  # ordered by first member: deterministic ids
-    if (big := max(map(len, bundles))) > max_bundle:
-        raise ValueError(f"a bundle has {big} images (> {max_bundle}); dHash links chained too far")
     gap = [has_box_gap(lab) for lab in labels]
     order = list(range(len(bundles)))
     random.Random(seed).shuffle(order)
@@ -323,10 +321,32 @@ def split_by_plate(
         if short := {s: c for s, c in left.items() if c}:
             raise ValueError(f"cannot fill {name} quota exactly, missing per label: {short}")
 
-    fill("heldout", heldout, lambda idx: not any(gap[i] for i in idx))
-    fill("val", val, lambda idx: True)
+    fill("heldout", heldout, lambda idx: len(idx) <= max_bundle and not any(gap[i] for i in idx))
+    fill("val", val, lambda idx: len(idx) <= max_bundle)
     bundle_of = {i: b for b, idx in enumerate(bundles) for i in idx}
     return [(rows[i][0], rows[i][1], side[i], labels[i].plate, bundle_of[i], gap[i]) for i in range(n)]
+
+
+def describe_bundles(out: list[tuple[str, str, str, str, int, bool]], hashes: dict[str, int], top: int = 10, max_dist: int = 6) -> list[str]:
+    """One line per largest bundle: size, split, labels, distinct plates, and its links
+    (same-plate pairs vs dHash-only pairs between different plates). No plate text."""
+    by: dict[int, list[tuple[str, str, str, str, int, bool]]] = defaultdict(list)
+    for r in out:
+        by[r[4]].append(r)
+    lines = []
+    for b in sorted(by, key=lambda b: -len(by[b]))[:top]:
+        rs = by[b]
+        same = dhash_only = 0
+        for i in range(len(rs)):
+            for j in range(i + 1, len(rs)):
+                if rs[i][3] == rs[j][3]:
+                    same += 1
+                elif (hashes[PurePosixPath(rs[i][0]).name] ^ hashes[PurePosixPath(rs[j][0]).name]).bit_count() <= max_dist:
+                    dhash_only += 1
+        labels = dict(Counter(r[1] for r in rs))
+        lines.append(f"{len(rs)} images, split {rs[0][2]}, {len({r[3] for r in rs})} plates, labels {labels}, "
+                     f"same-plate pairs {same}, dHash-only pairs {dhash_only}")
+    return lines
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -373,6 +393,7 @@ def main(argv: list[str] | None = None) -> None:
         with open(a.stats, newline="") as f:
             hashes = {r["base"]: int(r["dhash"], 16) for r in csv.DictReader(f) if r["status"] == "ok"}
         out = split_by_plate(read_manifest(a.manifest), hashes, a.heldout, a.val, a.seed)
+        print("10 largest bundles:", *describe_bundles(out, hashes), sep="\n  ")
         part = Path(a.out + ".part")
         with open(part, "w", newline="") as f:
             w = csv.writer(f)

@@ -55,5 +55,17 @@ def test_split_errors() -> None:
     rows, hashes = _data()
     with pytest.raises(ValueError, match="no dHash"):
         ccpd.split_by_plate(rows, {}, heldout=16, val=40)
-    with pytest.raises(ValueError, match="bundle"):  # equal hashes: one giant bundle
+    with pytest.raises(ValueError, match="cannot fill"):  # equal hashes: one giant bundle, nothing left for heldout
         ccpd.split_by_plate(rows, dict.fromkeys(hashes, 0), heldout=16, val=40)
+
+
+def test_oversize_bundle_goes_to_train() -> None:
+    rows, hashes = _data()
+    big = [r[0].split("/")[1] for r in rows[100:125]]  # 25 images chained by one hash, above max_bundle=20
+    hashes.update(dict.fromkeys(big, 7))
+    out = ccpd.split_by_plate(rows, hashes, heldout=16, val=40)
+    mine = [r for r in out if r[0].split("/")[1] in big]
+    assert {r[2] for r in mine} == {"train"} and len({r[4] for r in mine}) == 1
+    sizes = Counter(r[4] for r in out)
+    assert all(sizes[r[4]] <= 20 for r in out if r[2] != "train")
+    assert ccpd.describe_bundles(out, hashes)[0].startswith("25 images, split train")
