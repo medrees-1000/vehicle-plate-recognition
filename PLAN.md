@@ -12,24 +12,26 @@ Single planning file. Decisions below were agreed in the planning interview. Any
 - Deployment in mind (Hugging Face Space, Gradio, CPU-only, ONNX): drives the nano choice. Not planned in detail.
 
 ## Datasets & licenses
-Tiers: A = permissive/CC-BY. B = non-commercial/research-only. C = unclear/none (not used).
-If any tier B data is used, the README says "weights are non-commercial".
-Every row needs source URL, license, tier, checksum before use. Rows marked "verify" are open.
+Licenses rule: for every dataset record the source URL, version, checksum and the license as shown on its page, before use. Images and archives are never committed or redistributed (`data/` stays git-ignored). Which weights to publish is decided at deploy time, and the README lists the data sources and their licenses. Rows marked "verify" are open.
 
-| Dataset | Role | License / tier | Source / checksum |
+| Dataset | Role | License as shown | Source / checksum |
 |---|---|---|---|
-| CCPD2019 subset | Stage 1 train + 300 held-out Chinese test | Zenodo record: CC BY 4.0. Original repo (github.com/detectRecog/CCPD) terms not yet read; handled strictly as research-only, tier B until checked. Committed notebooks: stats and plots only, no sample images | Zenodo 15647076, CCPD2019.tar.xz, 13.2 GB, MD5 0dfbca0e6fcb7cb8ea720b0eae94c735; archive has 9 subfolders, 355,013 jpgs: base 199,996, challenge 50,003, tilt 30,216, fn 20,967, blur 20,611, db 10,132, rotate 10,053, weather 9,999, np 3,036 (no plates, excluded) |
-| UC3M-LP | "Spain (EU)" test, evaluation only. Never train, never share converted copies | Zenodo files: CC BY 4.0 (tier A). Paper record says CC BY-NC-ND, GitHub says ODbL; conflict, so handled strictly | Zenodo 17152029, UC3M-LP.zip, 4.5 GB, MD5 496e3b5e66b78d231f71d85c0e5e11a3 |
-| Roboflow US/EU + 1-2 other CC-BY multi-region sets | Stage 2 train/val (detection boxes, no text) | CC BY 4.0 per uploader (verify each page) | public.roboflow.com/object-detection/license-plates-us-eu; others chosen in M1b |
-| One whole Roboflow US source, held out | US test; ~150 plates hand-labelled by the author | verify | chosen in M1b |
-| OpenALPR benchmark | Not used: repo is AGPL-3.0 but image license is unstated (tier C) | C | github.com/openalpr/benchmarks |
+| CCPD2019 subset | Stage 1 train + 300 held-out Chinese test | Zenodo record: CC BY 4.0. Original repo (github.com/detectRecog/CCPD) terms not yet read (verify). Committed notebooks: stats and plots only, no sample images | Zenodo 15647076, CCPD2019.tar.xz, 13.2 GB, MD5 0dfbca0e6fcb7cb8ea720b0eae94c735; archive has 9 subfolders, 355,013 jpgs: base 199,996, challenge 50,003, tilt 30,216, fn 20,967, blur 20,611, db 10,132, rotate 10,053, weather 9,999, np 3,036 (no plates, excluded) |
+| UC3M-LP | "Spain (EU)" test, evaluation only. Never train, never share converted copies | Zenodo files: CC BY 4.0. Paper record says CC BY-NC-ND, GitHub says ODbL; conflict, confirm on the record page (M1b-6). Test only, no shared converted copies. 1,975 images. Authors blur some random plate characters and alter vehicle colour for GDPR, so OCR scores on it are not absolute; M1b-6 checks whether the text labels contain the blurred characters | Zenodo 17152029, UC3M-LP.zip, 4.5 GB, MD5 496e3b5e66b78d231f71d85c0e5e11a3 |
+| Roboflow License Plates, 350 images, v5 downloaded (augmented: re-download non-augmented before use) | Role open (M1b-3/4). Boxes only | Open Images subset. Annotations CC BY 4.0, images CC BY 2.0 | public.roboflow.com/object-detection/license-plates-us-eu; M1b-3 confirms which page the zip came from (samrat-sahoo appears to be a fork); checksum at M1b-3 |
+| Objects In The Wild, 462 images, v6 | Role open. Plate-only boxes, no text. Some images blurry | CC BY 4.0 as shown; images from Google images and Central Florida parks | https://universe.roboflow.com/objects-in-the-wild/license-plate-recognition-lhqow ; checksum at M1b-3 |
+| license-plate-usa, 670 images, v1 | Role open. Plate-only boxes, no text | CC BY 4.0 as shown; no image source stated | https://universe.roboflow.com/custom-dataset/license-plate-usa ; checksum at M1b-3 |
+| Roboflow EU candidates (e.g. patrick-neicu/european-license-plates, sumit-sharma-kcdlk/eu-license-plate-detection) | Candidates for stage 2 training | pending license check; ELP is academic-only and its country is unclear, so it needs checking. Paid sets (UniData, Appen) not used. Kaggle UniData unverified, not used | chosen at M1b-3 |
+| OpenALPR benchmark | Candidate, check in M1b-3 (US/EU images, verify annotations and license as shown). Repo is AGPL-3.0 but image license is unstated | verify | github.com/openalpr/benchmarks |
 | Pretrained baseline detector | Baseline to beat | verify license + training data | shortlist 2-3 in M2 |
 
 Rules:
-- Test sets are whole held-out sources, split by source/vehicle.
-- Near-duplicate check before freezing: dHash (Pillow), Hamming distance <= 6, test vs all training data (CCPD and stage 2).
+- Test sets are whole held-out sources: a source is never both train and test. CCPD is split by plate, not by image: all photos of one plate stay on the same side (train, validation or test).
+- Near-duplicate check before freezing: dHash (Pillow), Hamming distance <= 6, between every training source and every test set, and among the three Roboflow sets (the Objects In The Wild author says some photos came from another dataset).
+- Augmented copies (Roboflow exports with augmentation) must never go into a test pool or a split, because they create near-duplicates. Use non-augmented exports only.
+- Labels for plate text are "AI-proposed, human-verified": Claude Code reads copied crops and proposes text, the author checks every one against its crop. PaddleOCR, EasyOCR and fast-plate-ocr are never used to make labels, because they are the models being tested. The crops are read by Claude Code (an AI service).
 - Baseline: prefer documented training data, do not reject undocumented ones. If the baseline saw test images, that can only inflate its score (the comparison is then conservative); say so in the README.
-- Downloads > 1 GB need user approval first. Raw archives are kept once in `MyDrive/alpr/archives` with MD5 checked.
+- Downloads > 1 GB need user approval first. All raw archives and zips (including the Roboflow zips and UC3M-LP) are kept once in `MyDrive/alpr/archives`, a private folder that is not shared, with MD5 checked.
 - CCPD2019 subfolders overlap: 34,917 basenames occur in more than one subfolder (76,412 of 355,013 files, 21.5%), only outside ccpd_base and ccpd_np. Share of each subfolder's files in a duplicated name: blur 72%, db 67%, fn 67%, rotate 61%, challenge 48%, tilt 35%, weather 1%. Names encode the annotation, so these are very likely the same image (not verified byte-for-byte). Rule: deduplicate by basename before sampling (ccpd_np excluded first); each unique image keeps one subset label by fixed priority, rarest first: weather, rotate, db, blur, fn, tilt, challenge (base last). The subset label is only a sampling stratum; analysis and error slices use measured or derived quantities (box geometry from bbox/vertices, filename brightness; see the EDA findings for fields not to use), not the subset label.
 - CCPD overlap findings (notebooks/01_eda.ipynb, 5a): 313,518 unique names (310,482 excluding ccpd_np). A name appears in 1 to 6 subfolders (1: 278,601; 2: 28,989; 3: 5,384; 4: 454; 5: 74; 6: 16). ccpd_base overlaps with nothing; largest pairwise overlaps: blur-challenge 12,694, challenge-fn 7,919, fn-tilt 4,808. Available per subset label after dedup: weather 9,999, rotate 10,050, db 9,901, blur 16,629, fn 16,718, tilt 21,353, challenge 25,836, base 199,996. The hard subfolders (blur, challenge, db, fn, rotate, tilt, weather) are overlapping tags, not disjoint classes.
 - CCPD sample (built in M1a, seed 0): 17,900 images = 17,600 train + 300 held-out, packed as one `ccpd_sample.tar` (1.26 GB; `train/`, `heldout/`, `manifest.csv`), MD5 5019a5333b4a92aded34cd3fb52eff4c, checked after the build and again after the copy to `MyDrive/alpr/archives/` (manifest `ccpd_manifest.csv` beside it).
@@ -45,12 +47,24 @@ Rules:
 
 ## Evaluation
 - Detection: mAP@0.5 and mAP@0.5:0.95 on the US/EU test set.
-- Models compared: (1) pretrained baseline, (2) COCO YOLO fine-tuned on US/EU only (ablation), (3) main model (CCPD stage 1, then US/EU stage 2).
+- Detectors compared: (1) baseline = an existing public plate detector, untouched, named in M2, (2) CCPD only, (3) US/EU only (ablation), (4) CCPD then US/EU (main).
+- OCR engines are tested, never trained. Pick the OCR on the human-verified US crops, pick the detector by mAP, then run the best of each end to end. No grid of all pairings.
 - Reading: exact match (case-insensitive, ignoring spaces/hyphens) is the headline; also character error rate and CPU latency per plate.
 - Crops: ground-truth boxes (isolates OCR) and detector boxes (end-to-end). End-to-end uses one fixed OCR engine across detectors.
 - Reported separately: Spain (EU), US, Chinese held-out (per CCPD subset label, since the 300 are stratified by label).
 - Test sets are never used for tuning or model selection. Validation slices are held out from each training source.
-- Target size: at least 300 text-labelled US/EU plates in total.
+- Target size: at least 300 text-labelled US/EU plates in total (about 150-300 US plus UC3M-LP). The real count is reported.
+
+## Known limits (for the report)
+- Stage 2 training data is small; its real count is reported.
+- The EU test covers one country (Spain).
+- The US test mixes image quality, and OCR excludes unreadable plates, so its score leans toward easier images.
+- US plate text is AI-proposed, human-verified. The report gives the number proposed, corrected and skipped as unreadable.
+- CCPD results are reported per label (about 37 held-out images each, noisy).
+
+## Presentation notes (15 Nov)
+- Data availability: no clearly licensed US plate set of useful size beyond the 350-image one, so stage 2 data is small.
+- Licensing: every source's license as shown on its page is recorded; no images or archives are redistributed; the choice of published weights is made at deploy time.
 
 ## OCR
 - Compare three engines on identical crops: PaddleOCR (primary), fast-plate-ocr, EasyOCR. Tesseract only if trivial.
@@ -85,7 +99,7 @@ Status is updated as milestones finish. Verify column = how the claim is reprodu
 | Cleaning | partly done (M1a: unparseable names, cross-subfolder duplicates; sample check: 17,900 of 17,900 images usable, 8 exact-duplicate files, 47 base images with a box/vertices gap > 10%); rest M1b | CCPD filenames carry labels; corrupt images/bad boxes must not reach training; the same image appears in several subfolders (see Datasets rules) | sample command prints unparseable and collapsed-duplicate counts; cleaning script prints counts dropped per reason; pytest on fixtures; duplicate and label-sanity analysis in notebooks/01_eda.ipynb |
 | Preprocessing | not yet (M1b) | CCPD filename -> YOLO boxes; Ultralytics letterbox to 640 | conversion script + test; counts printed |
 | Feature engineering | skipped for the detector | CNN learns its own features; hand features would not be available at inference. The filename area and tilt fields are not comparable across subfolders (EDA), so analysis uses geometry derived from bbox/vertices (plate area fraction, aspect, skew) and filename brightness; blur is unreliable. Used for sampling and error analysis only, never as model input | sampling script prints strata counts (M1a); notebooks/01_eda.ipynb (5e, 5h) |
-| Split | not yet (M1b) | CCPD train/val by seed; 300 held-out; test sets are whole held-out sources. Open for M1b: 16 of the 300 held-out images share a plate with a training image, and 5 have a dHash near-duplicate in train | split command prints sizes; dHash duplicate report (notebook, until a shared helper is needed) is empty |
+| Split | not yet (M1b) | CCPD train/val by seed; 300 held-out; test sets are whole held-out sources. Decided: regroup the 17,900 images by plate (plus dHash links) and re-split whole groups. Keep 2,200 train per label and a label-stratified 300 held-out. Test: no plate on two sides | split command prints sizes; dHash duplicate report (notebook, until a shared helper is needed) is empty |
 | Model selection | not yet (M2-M4) | YOLO nano first, small only on a clear miss; OCR by exact match under latency ceiling | results tables in the evaluation notebook, copied to README |
 | Hyperparameters | not yet (M3-M4) | Ultralytics defaults; limited tuning (free T4), chosen on validation only | parameters and seed in the top cell of the training notebook, chosen on validation only |
 | Evaluation | not yet (M2, M4) | Metrics in the Evaluation section | evaluation notebook (number set in M2), using tested metric helpers from `src/alpr` |
@@ -95,7 +109,19 @@ Status is updated as milestones finish. Verify column = how the claim is reprodu
 One at a time; verify, tick, stop.
 - [x] M0 Setup: pyproject, `src/alpr/`, pytest + fixtures, remove requirements.txt, LICENSE (AGPL-3.0), fill CLAUDE.md Commands
 - [x] M1a CCPD + EDA: download CCPD2019 (MD5 check, archive kept on Drive), stream-extract the stratified sample (2,200 train per subset label x 8 = 17,600 after basename dedup, + 300 held-out, seed 0; ccpd_np excluded), pack it, then EDA in notebooks/01_eda.ipynb: plots embedded in the notebook, PNGs also written to Drive (subset balance, image sizes, bbox sizes, brightness/blur/tilt, label sanity, duplicates)
-- [ ] M1b Data: UC3M-LP download (MD5) and YOLO conversion (local only), choose Roboflow stage 2 sources + US held-out source, hand-label ~150 US plates, CCPD cleaning + filename-to-YOLO conversion + split, dHash near-duplicate check, freeze test sets
+- [ ] M1b Data (tick each sub-step when done):
+  - [ ] M1b-1 CCPD re-split by plate (+dHash links); 300 held-out stratified by label; test that no plate is on two sides
+  - [ ] M1b-2 CCPD filename -> YOLO boxes; cleaning counts per reason
+  - [ ] M1b-3 Check the three Roboflow zips: README.roboflow version and image count vs 462 / 670 / 350, confirm which page each came from, no augmentation (re-download v5 non-augmented); record URL, version, license as shown, MD5; you look at the images (US share, quality, readable plates) and vet the EU candidates and OpenALPR
+  - [ ] M1b-4 Decide roles (see options below), then assemble the stage 2 train/val set; report the real count
+  - [ ] M1b-5 US OCR labels on the test source(s): spot-check boxes by drawing a sample; copy only the crops to be read to a folder outside `data/` (`~/alpr_crops/`, not in the repo), batches of about 20 with contact sheets; Claude Code writes proposals to a CSV (readable / unreadable / unsure); you check each against its crop and correct; record counts proposed / corrected / skipped
+  - [ ] M1b-6 UC3M-LP: ask first (4.5 GB), MD5, confirm license, convert, check whether labels contain blurred characters
+  - [ ] M1b-7 dHash among the three Roboflow sets, test sets vs every training source, UC3M-LP vs training; freeze test sets
+  - M1b-4 role options for the three Roboflow sets (a source is never both train and test; decide after looking at the images):
+    1. 350 trains with the EU sets; 462 + 670 form the US test pool (about 1,100 images).
+    2. 462 + 670 train; the 350 is the US test (small; Open Images, mixed regions, not all US).
+    3. One of 462 / 670 trains, the other tests.
+    To decide: how many plates per set are US and readable (the OCR test needs about 150 readable), how many images are blurry, how many dHash overlaps exist between sets (overlapping sets must land on the same side or be deduplicated), and whether a test set has boxes for the detector test.
 - [ ] M2 Evaluation harness + baselines: metrics code; shortlist 2-3 baseline detectors, score the best; score PaddleOCR / fast-plate-ocr / EasyOCR on ground-truth crops
 - [ ] M3 Stage 1: train on CCPD, resumable on Colab
 - [ ] M4 Stage 2: fine-tune on US/EU-weighted mix; US/EU-only ablation; Chinese held-out report; error analysis
@@ -109,5 +135,15 @@ Context: progress presentation on 15 Nov 2026; project due December. No scope cu
 ## Definition of done
 - Gated: every claim reproduces from README commands, and results are reported honestly for all models and engines (including if the baseline wins, with an explanation). Goal, not gated: the main model beats the pretrained baseline on mAP@0.5:0.95 on the US/EU test set. No reading-accuracy floor yet; revisit after M2.
 - Reported, not gated: ablation vs main, Spain (EU), US and Chinese reading accuracy for all three engines, CPU latency.
-- Tests pass; no datasets, weights or `runs/` in git; boxes through M6 ticked; README notes "weights are non-commercial" if tier B data was used and "weights license unstated" for fast-plate-ocr.
+- Tests pass; no datasets, weights or `runs/` in git; boxes through M6 ticked; README lists data sources and licenses and notes "weights license unstated" for fast-plate-ocr.
 - Hugging Face Space live, stating which engine and weights it uses.
+
+## Decision log
+2026-11-09 (author's decisions):
+- Licenses rule replaces the tier system: no tiers, no tier C exception. Record URL, version, checksum and license as shown on the page; no images or archives committed or redistributed; published weights are chosen at deploy time; README lists sources and licenses.
+- Roles of the three Roboflow sets (350, 462, 670) are open until M1b-3/4. A source is never both train and test. dHash checks, no augmented copies, split by source stay.
+- Plate-text labels are AI-proposed, human-verified; PaddleOCR, EasyOCR and fast-plate-ocr never make them. Crops are read by Claude Code.
+- All zips go in `MyDrive/alpr/archives` (private, unshared). Crops for reading live in `~/alpr_crops/` on the PC, outside the repo.
+- Downloaded versions: Objects In The Wild v6, license-plate-usa v1, Roboflow License Plates v5 (augmented; re-download non-augmented before use). M1b-3 checks counts 462 / 670 / 350 and which page each zip came from.
+- Four detectors (baseline untouched, CCPD only, US/EU only, CCPD then US/EU); CCPD re-split by plate; OpenALPR is a candidate to check in M1b-3.
+- Data-availability finding and licensing reasoning recorded under Presentation notes.
