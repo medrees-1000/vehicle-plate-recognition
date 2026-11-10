@@ -5,6 +5,7 @@ CLI (each step skips if its output already exists):
     python -m alpr.ccpd sample ARCHIVE MANIFEST [--cache LISTING ...]
     python -m alpr.ccpd build ARCHIVE MANIFEST OUT_TAR
     python -m alpr.ccpd split MANIFEST STATS_CSV OUT_CSV [--val 1000] [--heldout 300] [--seed 0]
+    python -m alpr.ccpd yolo SAMPLE_TAR SPLIT_CSV OUT_TAR
 """
 import argparse
 import csv
@@ -349,6 +350,73 @@ def describe_bundles(out: list[tuple[str, str, str, str, int, bool]], hashes: di
     return lines
 
 
+def to_yolo(label: Label, w: int, h: int) -> str:
+    """One YOLO label line (class 0 = plate) from the filename box, normalised by image size."""
+    x1, y1, x2, y2 = label.bbox
+    return f"0 {(x1 + x2) / 2 / w:.6f} {(y1 + y2) / 2 / h:.6f} {(x2 - x1) / w:.6f} {(y2 - y1) / h:.6f}"
+
+
+DATA_YAML = "train: images/train\nval: images/val\ntest: images/heldout\nnames:\n  0: plate\n"  # no `path:`: Ultralytics then uses this file's folder
+
+
+def to_yolo_tar(
+    sample_tar: str | Path, split: dict[str, tuple[str, str]], out_tar: str | Path
+) -> tuple[Counter, list[tuple[str, str, str, str]]]:
+    """One streaming pass over the sample tar: write images/<split>/ + labels/<split>/ + data.yaml
+    to out_tar (via .part). `split` maps basename -> (subset, split). Images that fail a check are
+    left out. Returns (kept per (split, subset), dropped as (basename, subset, split, reason)).
+    Reasons: unparseable, corrupt, bbox_outside, box_gap, missing (in split but not in the tar).
+    """
+    kept: Counter = Counter()
+    dropped: list[tuple[str, str, str, str]] = []
+    seen: set[str] = set()
+    part = Path(str(out_tar) + ".part")
+
+    def add(dst: tarfile.TarFile, name: str, data: bytes) -> None:
+        info = tarfile.TarInfo(name)
+        info.size = len(data)
+        dst.addfile(info, io.BytesIO(data))
+
+    with tarfile.open(sample_tar, "r|") as src, tarfile.open(part, "w") as dst:
+        for m in src:
+            base = PurePosixPath(m.name).name
+            if not m.isfile() or base not in split:
+                continue
+            subset, side = split[base]
+            seen.add(base)
+            data = src.extractfile(m).read()
+            reason, line = "", ""
+            try:
+                label = parse_name(base)
+            except ValueError:
+                reason = "unparseable"
+            else:
+                try:
+                    with Image.open(io.BytesIO(data)) as im:
+                        w, h = im.size
+                        im.verify()
+                except Exception:  # Pillow raises many types for broken files
+                    reason = "corrupt"
+                else:
+                    x1, y1, x2, y2 = label.bbox
+                    if not (0 <= x1 < x2 <= w and 0 <= y1 < y2 <= h):
+                        reason = "bbox_outside"
+                    elif has_box_gap(label):
+                        reason = "box_gap"
+                    else:
+                        line = to_yolo(label, w, h)
+            if reason:
+                dropped.append((base, subset, side, reason))
+                continue
+            add(dst, f"images/{side}/{base}", data)
+            add(dst, f"labels/{side}/{PurePosixPath(base).stem}.txt", (line + "\n").encode())
+            kept[(side, subset)] += 1
+        dropped += [(b, *split[b], "missing") for b in sorted(set(split) - seen)]
+        add(dst, "data.yaml", DATA_YAML.encode())
+    part.rename(out_tar)
+    return kept, dropped
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="alpr.ccpd")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -371,6 +439,10 @@ def main(argv: list[str] | None = None) -> None:
     sp.add_argument("--val", type=int, default=1000)
     sp.add_argument("--heldout", type=int, default=300)
     sp.add_argument("--seed", type=int, default=0)
+    y = sub.add_parser("yolo")
+    y.add_argument("sample_tar")
+    y.add_argument("split_csv")
+    y.add_argument("out")
     a = p.parse_args(argv)
 
     if a.cmd == "download":
@@ -404,6 +476,26 @@ def main(argv: list[str] | None = None) -> None:
         print("per subset/split:", dict(sorted(Counter((r[1], r[2]) for r in out).items())))
         print("largest bundles:", Counter(r[4] for r in out).most_common(10))
         print(f"box_gap images: {sum(r[5] for r in out)}; in heldout: {sum(r[5] for r in out if r[2] == 'heldout')}")
+    elif a.cmd == "yolo":
+        if Path(a.out).exists():
+            print(f"{a.out} exists, skipping")
+            return
+        with open(a.split_csv, newline="") as f:
+            split = {PurePosixPath(r["member"]).name: (r["subset"], r["split"]) for r in csv.DictReader(f)}
+        kept, dropped = to_yolo_tar(a.sample_tar, split, a.out)
+        with open(Path(a.out).with_suffix(".dropped.csv"), "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["basename", "subset", "split", "reason"])
+            w.writerows(dropped)
+        print("in split file:", len(split), "| kept:", sum(kept.values()), "| dropped:", len(dropped))
+        print("dropped per (reason, split):", dict(sorted(Counter((r[3], r[2]) for r in dropped).items())))
+        print("dropped per (reason, subset):", dict(sorted(Counter((r[3], r[1]) for r in dropped).items())))
+        per_split: Counter = Counter()
+        for (side, _), c in kept.items():
+            per_split[side] += c
+        print("kept per split:", dict(sorted(per_split.items())))
+        print("kept per (split, subset):", dict(sorted(kept.items())))
+        print(f"{a.out}: MD5 {file_md5(a.out)}")
     else:
         if Path(a.out).exists():
             print(f"{a.out} exists, skipping")
