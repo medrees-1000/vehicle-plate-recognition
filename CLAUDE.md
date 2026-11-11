@@ -29,6 +29,7 @@ If PLAN.md is missing or stale, stop and say so; do not guess scope.
 - The Colab runtime is remote: local files are not visible to it.
 - Persistent data, checkpoints and runs go to Google Drive (mounted). Copy data to the VM's local disk as one archive before training; never train from many small files on a Drive mount.
 - Notebooks (`notebooks/`, numbered) hold EDA, exploration, pretrained-model use, training (Ultralytics API), evaluation, results and error analysis. `src/alpr/` holds only data plumbing (download, MD5, stream-extract, sampling, packing, filename-to-YOLO conversion) and small tested helpers shared by several notebooks (e.g. exact-match, CER).
+- Notebooks are the default home for EDA, modelling, training, evaluation, plotting and results; `src/alpr/` is only shared, tested data plumbing. All imports go in one top cell (the repo package `alpr` is imported right after the install cell).
 - Training must be resumable: checkpoints saved to Drive every epoch, `resume=True` after a disconnect. Parameters and seed in a top cell. Run Restart & Run All before committing a notebook.
 - Raw `pip install uv` is approved only to bootstrap `uv` on Colab; everything else goes through `uv`.
 
