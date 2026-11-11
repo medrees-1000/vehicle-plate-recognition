@@ -64,6 +64,7 @@ Rules:
 - The US test mixes image quality, and OCR excludes unreadable plates, so its score leans toward easier images.
 - US plate text is AI-proposed, human-verified. The report gives the number proposed, corrected and skipped as unreadable.
 - CCPD results are reported per label (about 37 held-out images each, noisy).
+- CCPD boxes are upright rectangles around 4 marked corners, so large tilted plates have loose boxes with empty corners; this may lower mAP@0.5:0.95 (strict IoU) on them.
 
 ## Presentation notes (15 Nov)
 - Data availability: no clearly licensed US plate set of useful size beyond the 350-image one, so stage 2 data is small.
@@ -150,3 +151,6 @@ Context: progress presentation on 15 Nov 2026; project due December. No scope cu
 - Downloaded versions: Objects In The Wild v6, license-plate-usa v1, Roboflow License Plates v5 (augmented; re-download non-augmented before use). M1b-3 checks counts 462 / 670 / 350 and which page each zip came from.
 - Four detectors (baseline untouched, CCPD only, US/EU only, CCPD then US/EU); CCPD re-split by plate; OpenALPR is a candidate to check in M1b-3.
 - Data-availability finding and licensing reasoning recorded under Presentation notes.
+
+2026-11-11:
+- M1b-2 largest-box check (notebooks/02_ccpd_yolo_check.ipynb, step 6b). Over all 17,853 kept images, max |YOLO box - filename box| = 0.0008 px: the converter is exact. The filename box equals the rectangle around the 4 vertices (median gap 0.0% in all three size buckets; the max stays below 10% only because the box_gap filter already dropped the larger gaps). The largest boxes look loose because CCPD boxes are upright rectangles around the 4 marked corners, and large tilted plates leave empty corners; in one image the corner marks look slightly above the plate (seen by eye, not measured). No rebuild of `ccpd_yolo.tar`; M1b-2 stays ticked. Consequence: mAP@0.5:0.95 may be lower on large tilted plates (see Known limits).
