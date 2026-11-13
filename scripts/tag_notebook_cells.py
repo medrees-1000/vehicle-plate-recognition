@@ -1,4 +1,4 @@
-"""Add the cell tag `remove_output` to the cells named in MARKERS for a notebook (02: two image cells; 03: three image cells and the README-printing cell).
+"""Add the cell tag `remove_output` to the cells named in MARKERS for a notebook (02: two image cells; 03: three image cells and the README-printing cell; 04: two image cells).
 
 Why: before committing, `nbconvert` deletes the outputs of cells tagged `remove_output`, so the
 CCPD photos never reach the public repo while text and table outputs stay.
@@ -29,6 +29,10 @@ MARKERS = {
         "def sheet(items, title, out, ncols=5):",  # step 6: random contact sheets
         "orb_fl = sorted(",  # step 6: flagged-pair sheets
         "TOP_SET, TOP_N = 'usa_v1', 10",  # step 6b: top random pairs
+    ),
+    "04_us_split.ipynb": (
+        "# evidence sheet: 20 highest test-vs-pool scores",  # Roboflow images side by side
+        "# visual box check",  # sample images from the tar with boxes
     ),
 }
 
