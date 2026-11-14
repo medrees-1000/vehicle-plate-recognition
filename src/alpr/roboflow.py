@@ -70,16 +70,22 @@ def plate_boxes(text: str, plate_ids: Iterable[int], n_classes: int) -> tuple[li
     return boxes, ""
 
 
-def expand_copies(flagged: set[str], pool: Iterable[str], copy_sets: Iterable[str]) -> set[str]:
+def expand_copies(
+    flagged: set[str], pool: Iterable[str], copy_sets: Iterable[str], cap: int | None = None,
+    sizes: dict[tuple[str, str], int] | None = None,
+) -> set[str]:
     """Pool keys (not already flagged) that share a source name with a flagged key, in sets where the
-    name identifies the photo. shortcut: names only; usa_v1 copies that do not match themselves stay."""
-    copy_sets = set(copy_sets)
+    name identifies the photo. A group larger than `cap` (images in the group; `sizes` maps (set, source)
+    to a size, default: counted in `pool`) is not expanded: a huge group is a shared name stem, not one photo.
+    shortcut: names only; usa_v1 copies that do not match themselves stay."""
+    copy_sets, pool = set(copy_sets), list(pool)
 
     def src(k: str) -> tuple[str, str]:
         s, _, n = split_key(k)
         return s, source_of(n)
 
-    hit = {src(k) for k in flagged if split_key(k)[0] in copy_sets}
+    sizes = sizes if sizes is not None else Counter(src(k) for k in pool)
+    hit = {src(k) for k in flagged if split_key(k)[0] in copy_sets and (cap is None or sizes[src(k)] <= cap)}
     return {k for k in pool if k not in flagged and split_key(k)[0] in copy_sets and src(k) in hit}
 
 

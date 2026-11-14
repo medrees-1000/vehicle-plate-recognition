@@ -39,6 +39,11 @@ def test_groups_copies_pick_check():
     pool = [K("fl", "train", f"{n}.rf.{h}.jpg") for n in "ab" for h in "123"] + [K("fl", "valid", "a.rf.9.jpg"), K("us", "train", "c.jpg"), K("us", "train", "d.jpg"), K("us", "valid", "e.jpg")]
     assert rf.expand_copies({K("fl", "train", "a.rf.1.jpg")}, pool, {"fl"}) == {K("fl", "train", "a.rf.2.jpg"), K("fl", "train", "a.rf.3.jpg"), K("fl", "valid", "a.rf.9.jpg")}
     assert rf.expand_copies({K("us", "train", "c.jpg")}, pool, {"fl"}) == set()  # usa: no name copies
+    fa = {K("fl", "train", "a.rf.1.jpg")}
+    assert rf.expand_copies(fa, pool, {"fl"}, cap=4) == rf.expand_copies(fa, pool, {"fl"})  # group of 4 is within cap 4
+    assert rf.expand_copies(fa, pool, {"fl"}, cap=3) == set()  # group of 4 > cap 3: only the flagged image goes
+    assert len(rf.expand_copies(fa, pool, {"fl"}, cap=3, sizes={("fl", "a"): 4 - 2})) == 3  # sizes override the count in `pool`
+    assert rf.expand_copies({K("fl", "train", "b.rf.1.jpg")}, pool, {"fl"}, cap=3) == {K("fl", "train", "b.rf.2.jpg"), K("fl", "train", "b.rf.3.jpg")}  # other groups unaffected
     links = [(K("us", "train", "c.jpg"), K("us", "valid", "e.jpg")), (K("us", "valid", "e.jpg"), K("us", "train", "d.jpg")), ("gone/x/y", pool[0])]  # chain; link outside pool ignored
     g = rf.group_ids(pool, links)
     assert len(set(g.values())) == 3  # fl-a (4), fl-b (3), us chain (3)
