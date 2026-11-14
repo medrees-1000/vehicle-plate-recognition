@@ -1,4 +1,4 @@
-"""Add the cell tag `remove_output` to the cells named in MARKERS for a notebook (02: two image cells; 03: three image cells and the README-printing cell; 04: three image cells).
+"""Add the cell tag `remove_output` to the cells named in MARKERS for a notebook (02: two image cells; 03: three image cells and the README-printing cell; 04: three image cells; 05: the zip-listing cell).
 
 Why: before committing, `nbconvert` deletes the outputs of cells tagged `remove_output`, so the
 CCPD photos never reach the public repo while text and table outputs stay.
@@ -34,6 +34,9 @@ MARKERS = {
         "# evidence sheet: 20 highest test-vs-pool scores",  # Roboflow images side by side
         "# visual box check",  # sample images from the tar with boxes
         "# contact sheet: removed name groups larger than 20",  # big removed groups, Roboflow images
+    ),
+    "05_uc3m_check.ipynb": (
+        "# Cell A: zip listing",  # prints folder names, file names and README text from the UC3M-LP zip
     ),
 }
 
