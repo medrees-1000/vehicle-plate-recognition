@@ -17,6 +17,7 @@ import zipfile
 from collections import Counter, defaultdict
 from pathlib import Path, PurePosixPath
 
+import numpy as np
 from PIL import Image
 
 from alpr import ccpd
@@ -68,6 +69,22 @@ def split_lp(lp_id: str) -> tuple[str, int, int]:
     if not sep:
         prefix, rest = "", lp_id
     return prefix, len(rest), rest.count("*")
+
+
+def plate_pair_counts(a: list[str], b: list[str]) -> Counter[tuple[int, int]]:
+    """Over every pair (x in a, y in b) with the same text length (prefix dropped): count pairs by (k, e), k = positions
+    where both plates are visible (not '*'), e = how many of those agree. e == k is a text match. Counts only, no text."""
+    def text(lp: str) -> str:
+        return lp.partition("-")[2] if "-" in lp else lp
+
+    out: Counter[tuple[int, int]] = Counter()
+    for n in {len(text(x)) for x in a} & {len(text(y)) for y in b}:
+        ma = np.array([[ord(c) for c in text(x)] for x in a if len(text(x)) == n])
+        mb = np.array([[ord(c) for c in text(y)] for y in b if len(text(y)) == n])
+        for row in ma:  # one row at a time: memory stays len(mb) x n
+            both = (row != 42) & (mb != 42)
+            out.update(zip(both.sum(1).tolist(), (both & (mb == row)).sum(1).tolist()))
+    return out
 
 
 def _parse(js: bytes) -> tuple[int, int, list[tuple[list[tuple[float, float]], str, int]]]:

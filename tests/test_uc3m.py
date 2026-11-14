@@ -161,3 +161,8 @@ def test_put(tmp_path: Path) -> None:
     uc3m.put(src / "o.tar", drive, min_free_gb=0)
     assert (drive / "o.tar").read_bytes() == b"o.tar" and (drive / "uc3m_labels.csv").exists()
     uc3m.put(src / "o.tar", drive, min_free_gb=0)  # second run finds matching copies
+
+
+def test_plate_pair_counts() -> None:
+    c = uc3m.plate_pair_counts(["AD-12*45*7", "AD-1234567"], ["BN-1234*6*", "AD-9234*6*", "AD-123"])  # 3-char plate: other length, skipped
+    assert dict(c) == {(3, 3): 1, (5, 5): 1, (3, 2): 1, (5, 4): 1}

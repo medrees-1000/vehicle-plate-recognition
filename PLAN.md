@@ -88,6 +88,7 @@ Rules:
 - UC3M-LP plates are small relative to the images (median box 0.33% of the image area, 209 of 2,547 under 0.05%; images up to 9,248 px per side), so evaluating at imgsz 640 may miss many; a larger evaluation size is to be tried at M2 (not measured).
 - UC3M-LP has 9 distinct `lp_id` prefixes (AD 2,155; AN 343; BD 18; BN 13; DD 8; EN 3; DN 3; ED 3; CD 1); their meaning is unknown (not read).
 - UC3M-LP: the authors' train and test may contain the same vehicle (check in M1b-7).
+- Leak check scope (M1b-7, decided 2026-11-14): UC3M-LP vs CCPD train, UC3M-LP vs the US train/validation pool, CCPD held-out vs the US pool and UC3M train, and US test vs UC3M train are checked by MD5 and dHash only, not ORB (ORB on about 40 M pairs is about 44 h on CPU by the audit's per-pair rate). Altered copies between these sources are therefore not checked, and the sources are assumed unrelated.
 
 ## Presentation notes (15 Nov)
 - Data availability: no clearly licensed US plate set of useful size beyond the 350-image one, so stage 2 data is small.
@@ -220,3 +221,8 @@ Context: progress presentation on 15 Nov 2026; project due December. No scope cu
 - The colon was added to the match rule (with spaces, hyphens, dots, middle dots and accents).
 - The leak check stays unchanged (5+ characters, compact match): a hand review of its 3 flags found only numeric coincidences, and a stricter rule could hide real digit-only plates.
 - 19 crops were excluded as too_small because they were too small for the author to read by eye on the small sheet; these crops are under 20 px wide.
+
+2026-11-14 (author's decisions; M1b-7 plan):
+- Policy: a match never touches a test image; the training-side image and its name-copies (groups of at most 20) are removed, automatically, with no pair-by-pair review. Guard: if a rule would remove more than 5% of a training set, the script stops and reports counts by score band instead of removing.
+- ORB only for US test vs CCPD train, UC3M test vs UC3M train (plus plate text, wildcard-aware) and CCPD held-out vs CCPD train; whether to run it is decided after the timing (notebooks/07_leak_check.ipynb). All other cross-set pairs: MD5 and dHash only. No GPU unless the timing shows the approved checks are too slow, and then only after asking.
+- Freeze: one manifest (name, MD5) each for CCPD held-out 300, US test 105 and UC3M 1,975 on Drive outside the repo; PLAN.md gets only each manifest's own MD5 and the counts.
