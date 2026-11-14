@@ -71,19 +71,35 @@ def split_lp(lp_id: str) -> tuple[str, int, int]:
     return prefix, len(rest), rest.count("*")
 
 
+def _text(lp: str) -> str:
+    return lp.partition("-")[2] if "-" in lp else lp
+
+
 def plate_pair_counts(a: list[str], b: list[str]) -> Counter[tuple[int, int]]:
     """Over every pair (x in a, y in b) with the same text length (prefix dropped): count pairs by (k, e), k = positions
     where both plates are visible (not '*'), e = how many of those agree. e == k is a text match. Counts only, no text."""
-    def text(lp: str) -> str:
-        return lp.partition("-")[2] if "-" in lp else lp
-
     out: Counter[tuple[int, int]] = Counter()
-    for n in {len(text(x)) for x in a} & {len(text(y)) for y in b}:
-        ma = np.array([[ord(c) for c in text(x)] for x in a if len(text(x)) == n])
-        mb = np.array([[ord(c) for c in text(y)] for y in b if len(text(y)) == n])
+    for n in {len(_text(x)) for x in a} & {len(_text(y)) for y in b}:
+        ma = np.array([[ord(c) for c in _text(x)] for x in a if len(_text(x)) == n])
+        mb = np.array([[ord(c) for c in _text(y)] for y in b if len(_text(y)) == n])
         for row in ma:  # one row at a time: memory stays len(mb) x n
             both = (row != 42) & (mb != 42)
             out.update(zip(both.sum(1).tolist(), (both & (mb == row)).sum(1).tolist()))
+    return out
+
+
+def plate_matches(a: list[str], b: list[str], k: int) -> list[tuple[int, int, bool]]:
+    """(i, j, same_mask) for every pair a[i], b[j] of equal text length with exactly k positions visible in both and all k
+    agreeing; same_mask = the '*' positions are identical. Indices only, no text."""
+    ta, tb = [_text(x) for x in a], [_text(y) for y in b]
+    out: list[tuple[int, int, bool]] = []
+    for n in set(map(len, ta)) & set(map(len, tb)):
+        ia, ib = [i for i, t in enumerate(ta) if len(t) == n], [j for j, t in enumerate(tb) if len(t) == n]
+        ma, mb = np.array([[ord(c) for c in ta[i]] for i in ia]), np.array([[ord(c) for c in tb[j]] for j in ib])
+        for i, row in zip(ia, ma):
+            both = (row != 42) & (mb != 42)
+            for h in np.flatnonzero((both.sum(1) == k) & ((both & (mb != row)).sum(1) == 0)):
+                out.append((i, ib[h], bool(((row == 42) == (mb[h] == 42)).all())))
     return out
 
 

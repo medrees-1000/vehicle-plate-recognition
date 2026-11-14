@@ -166,3 +166,10 @@ def test_put(tmp_path: Path) -> None:
 def test_plate_pair_counts() -> None:
     c = uc3m.plate_pair_counts(["AD-12*45*7", "AD-1234567"], ["BN-1234*6*", "AD-9234*6*", "AD-123"])  # 3-char plate: other length, skipped
     assert dict(c) == {(3, 3): 1, (5, 5): 1, (3, 2): 1, (5, 4): 1}
+
+
+def test_plate_matches() -> None:
+    a, b = ["AD-12*45*7", "AD-1234567"], ["BN-1234*6*", "AD-9234*6*", "AD-123", "AD-12*45*7"]  # 3-char plate: other length, skipped
+    assert uc3m.plate_matches(a, b, 3) == [(0, 0, False)]
+    assert uc3m.plate_matches(a, b, 4) == []
+    assert uc3m.plate_matches(a, b, 5) == [(0, 3, True), (1, 0, False), (1, 3, False)]  # only the identical plate has the same mask
