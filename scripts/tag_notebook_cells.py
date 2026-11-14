@@ -1,4 +1,4 @@
-"""Add the cell tag `remove_output` to the cells named in MARKERS for a notebook (02: two image cells; 03: three image cells and the README-printing cell; 04: three image cells; 05: the zip-listing cell).
+"""Add the cell tag `remove_output` to the cells named in MARKERS for a notebook (02: two image cells; 03: three image cells and the README-printing cell; 04: three image cells; 05: the zip-listing and JSON-structure cells).
 
 Why: before committing, `nbconvert` deletes the outputs of cells tagged `remove_output`, so the
 CCPD photos never reach the public repo while text and table outputs stay.
@@ -37,6 +37,8 @@ MARKERS = {
     ),
     "05_uc3m_check.ipynb": (
         "# Cell A: zip listing",  # prints folder names, file names and README text from the UC3M-LP zip
+        "# Cell C: JSON structure",  # key paths and label patterns (no plate text, but the label format)
+        "# visual box check: UC3M-LP",  # sample images from the converted tar with boxes
     ),
 }
 
