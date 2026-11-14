@@ -97,3 +97,20 @@ def test_leakcheck_finds_text_never_prints_it(tmp_path: Path) -> None:
     assert strings == {"ab1234", "xy99zz", "xy99zz7"}  # compact, lower case; "A1" is too short
     texts = {"nb.ipynb": 'print("ab 12-34")', "clean.py": "x = 1", "log": "..XY99ZZ7.."}
     assert uslabels.find_leaks(strings, texts) == {"nb.ipynb": 1, "log": 2}
+
+
+def test_match_rule() -> None:
+    assert uslabels._compact("Zä. 987·Q-b") == "za987qb"
+    assert uslabels._compact("ab:12:cd") == "ab12cd"
+
+
+def test_counts(tmp_path: Path) -> None:
+    f = tmp_path / "l.csv"
+    head = "crop_no,proposed_text,status,reason,corrected_text,final_status\n"
+    f.write_text(head + "1,,s,,,readable\n2,,s,,,guess\n3,,s,too_small,,unreadable\n4,,s,mirrored,,unreadable\n5,,s,too_small,,unreadable\n6,,s,not_plate,,not_plate\n7,,s,,,\n")
+    c = uslabels.counts(f)
+    assert (c["confirmed"], c["guess"], c["not_plate"], c["pending"]) == (1, 1, 1, [7])
+    assert c["unreadable"] == {"too_small": 2, "mirrored": 1}
+    f.write_text(head + "1,,s,,,maybe\n")
+    with pytest.raises(ValueError, match="maybe"):
+        uslabels.counts(f)

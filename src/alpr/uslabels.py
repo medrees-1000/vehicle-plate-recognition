@@ -3,6 +3,7 @@
 CLI:
     python -m alpr.uslabels crops TAR OUT_ZIP        (US test crops from us_yolo.tar: crops/NNNN.png, index.csv, boxes_check.png; prints counts only)
     python -m alpr.uslabels sheets CROPS_DIR OUT_DIR [--min-width W] [--batch 20]   (numbered contact sheets; numbers only, no file names)
+    python -m alpr.uslabels counts CSV                  (final-status counts: confirmed, guess, unreadable by reason, not_plate, pending; no text)
     python -m alpr.uslabels leakcheck CSV [--history]    (prints file names and hit counts, never the text)
 The text CSV (crop_no, proposed_text, status, corrected_text, final_status) holds plate text: keep it outside the repo.
 """
@@ -14,6 +15,7 @@ import random
 import re
 import subprocess
 import tarfile
+import unicodedata
 import zipfile
 from collections import Counter
 from collections.abc import Iterable
@@ -200,6 +202,27 @@ def make_sheets(crops_dir: str | Path, out_dir: str | Path, min_width: float = 0
     return made
 
 
+FINAL = ("readable", "guess", "unreadable", "not_plate")  # final_status values; empty = not reviewed yet. guess = too blurry to read, proposed text kept
+
+
+def counts(csv_path: str | Path) -> dict:
+    """Final-status groups of the text CSV: confirmed (readable), guess, unreadable (per reason), not_plate, pending (crop numbers).
+    Scoring: the main number uses confirmed only; a second number may add guess. Raises ValueError on an unknown final_status."""
+    out: dict = {"confirmed": 0, "guess": 0, "unreadable": Counter(), "not_plate": 0, "pending": []}
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        for r in csv.DictReader(f):
+            fin = r["final_status"]
+            if fin not in ("", *FINAL):
+                raise ValueError(f"crop {r['crop_no']}: unknown final_status {fin!r}")
+            if not fin:
+                out["pending"].append(int(r["crop_no"]))
+            elif fin == "unreadable":
+                out["unreadable"][r["reason"]] += 1
+            else:
+                out["confirmed" if fin == "readable" else fin] += 1
+    return out
+
+
 def read_strings(csv_path: str | Path) -> set[str]:
     """Plate strings (proposed and corrected) from the text CSV that are searched for, in compact form (see _compact)."""
     out = set()
@@ -213,8 +236,9 @@ def read_strings(csv_path: str | Path) -> set[str]:
 
 
 def _compact(s: str) -> str:
-    """Case-insensitive, without spaces and hyphens: the match rule of the OCR evaluation."""
-    return re.sub(r"[\s-]+", "", s).lower()
+    """The match rule of the OCR evaluation: case-insensitive, ignoring spaces, hyphens, dots, colons and middle dots, accents stripped."""
+    s = "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c))
+    return re.sub(r"[\s\-.:\u00b7\u2022\u2219]+", "", s).lower()
 
 
 def find_leaks(strings: Iterable[str], texts: dict[str, str]) -> dict[str, int]:
@@ -259,6 +283,7 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("out_dir")
     s.add_argument("--min-width", type=float, default=0)
     s.add_argument("--batch", type=int, default=20)
+    sub.add_parser("counts").add_argument("csv")
     k = sub.add_parser("leakcheck")
     k.add_argument("csv")
     k.add_argument("--history", action="store_true")
@@ -276,6 +301,9 @@ def main(argv: list[str] | None = None) -> None:
     elif a.cmd == "sheets":
         for name, nums in make_sheets(a.crops_dir, a.out_dir, a.min_width, a.batch).items():
             print(f"{name}: crops {nums[0]}-{nums[-1]} ({len(nums)})")
+    elif a.cmd == "counts":
+        c = counts(a.csv)
+        print(f"confirmed {c['confirmed']} | guess {c['guess']} | unreadable {sum(c['unreadable'].values())} {dict(c['unreadable'])} | not_plate {c['not_plate']} | pending {len(c['pending'])}")
     else:
         leaks = leakcheck(a.csv, a.history)
         for name, n in sorted(leaks.items()):
