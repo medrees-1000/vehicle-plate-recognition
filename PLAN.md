@@ -178,10 +178,19 @@ One at a time; verify, tick, stop.
     - Frozen test sets (manifest = name and MD5 of the image bytes as stored in the tar, sorted by name, LF; on Drive in `MyDrive/alpr/frozen/`, never in the repo; each re-verified against a second read of its tar): CCPD held-out, 300 images, manifest MD5 a12032f8f9d2e8c16bf4cc95c05a269b; US test, 105 images, manifest MD5 8b83bd4b5074dd7714908dc9a778f8ec; UC3M-LP, all 1,975 images (named split/name), manifest MD5 decf0504f9415596e500969c4ac616d2.
     - Not run: ORB check 1 (US test vs CCPD train) and ORB check 4 (CCPD held-out vs CCPD train). Reasons: the cost estimates changed a lot between runs (check 1: 2.0 to 4.4 h; check 4: 5.5 to 12.4 h); MD5 and dHash found nothing; control 1's highest chance score was 34; check 4 has no copy-free control; the CCPD split is by plate (M1b-1). ORB for check 1 can still be run later (the notebook cell exists, `RUN_ORB1` is False).
 - [ ] M2 Evaluation harness + baselines: metrics code; shortlist 2-3 baseline detectors, score the best; score PaddleOCR / fast-plate-ocr / EasyOCR on ground-truth crops
-  - [ ] M2-1 Detection baseline (notebooks/08_eval_detector.ipynb): A scored once on US test, CCPD held-out, then UC3M 1,975 and the authors' 395
+  - [x] M2-1 Detection baseline (notebooks/08_eval_detector.ipynb): A scored once on US test, CCPD held-out, then UC3M 1,975 and the authors' 395 (done 2026-11-15; results below)
   - [ ] M2-2 OCR scoring (notebooks/09_eval_ocr.ipynb, src/alpr/metrics.py, tests/test_metrics.py): three engines on the US crops, then the UC3M crops; CPU latency
   - [ ] M2-3 UC3M at a larger evaluation size (1280, 1920 vs the 640 control; only after M2-1 and M2-2; GPU only with the author's approval)
   - Timing samples done (2026-11-15; 20 items per set, Colab CPU, 2 cores, Intel Xeon 2.20 GHz, Ultralytics 8.4.214, torch 2.14.1+cpu; run-to-run speed varies about 2x). These are timings only, no score, and the projections are arithmetic, not measured full runs. Nothing in M2 is ticked. Results are in the decision log below.
+  - M2-1 results (baseline A, weights MD5 4e15fe9c09df4c3bd0e91c02c3ff18bf, HF commit 4ae32c182f083f1a60c3a8c1a19ad82b2674eea3; Ultralytics 8.4.214, `model.val` imgsz 640, conf 0.001, iou 0.6, seed 0, batch 1, device cpu; Colab 2-core Intel Xeon 2.20 GHz; images checked against the frozen manifests; one run per set; JSON per set on Drive at `reports/m2/<set>_imgsz640.json`; the checkpoint records training imgsz 640, so no second-size run):
+
+    | Set | Images | Instances | mAP50 | mAP50-95 | Precision | Recall | val time |
+    |---|---|---|---|---|---|---|---|
+    | US test | 105 | 129 | 0.8245 | 0.5248 | 0.9554 | 0.7674 | 66 s |
+    | CCPD held-out | 300 | 300 | 0.8910 | 0.5742 | 0.9655 | 0.8403 | 119 s |
+    | UC3M authors' test (395) | 395 | 491 | 0.8928 | 0.4495 | 0.9608 | 0.8208 | 255 s |
+    | UC3M all | 1,975 | 2,547 | 0.8580 | 0.4192 | 0.9238 | 0.8142 | 1,334 s |
+
   - To do before the full runs: they must be resumable (progress kept so a Colab disconnect does not restart them) and write predictions to a CSV on Drive; plate text is never printed.
 - [ ] M3 Stage 1: train on CCPD, resumable on Colab
 - [ ] M4 Stage 2: fine-tune on US/EU-weighted mix; US/EU-only ablation; Chinese held-out report; error analysis
@@ -268,3 +277,16 @@ Context: progress presentation on 15 Nov 2026; project due December. No scope cu
 - PaddleOCR models resolved for `lang='en'`: PP-OCRv6_medium_det and PP-OCRv6_medium_rec.
 - PaddlePaddle CPU/oneDNN fix: the first Paddle run failed in the oneDNN path (PaddlePaddle issue 77340). The engine arguments changed (`enable_mkldnn=False` in the PaddleOCR constructor); the pins stay as in uv.lock (paddleocr 3.7.0, paddlepaddle 3.3.1). No Paddle score existed before the change. Details are in the earlier 2026-11-15 entry on PaddleOCR on Colab CPU.
 - Note on the 500 ms ceiling: it is for the whole pipeline (detector plus OCR). The baseline detector alone takes about 360 to 560 ms on this CPU, and two OCR engines (EasyOCR and PaddleOCR on UC3M crops) exceed 500 ms alone on this CPU. No decision is taken from timing: OCR is chosen by accuracy on the human-verified crops, with speed as a constraint.
+
+2026-11-15 (M2-1 results, baseline A; Part 1 ticked, M2 itself not ticked):
+- Settings, weights and machine as in the M2 entry. Each set's numbers are also on Drive as `reports/m2/<set>_imgsz640.json`.
+
+| Set | Images | Instances | mAP50 | mAP50-95 | Precision | Recall | val time |
+|---|---|---|---|---|---|---|---|
+| US test | 105 | 129 | 0.8245 | 0.5248 | 0.9554 | 0.7674 | 66 s |
+| CCPD held-out | 300 | 300 | 0.8910 | 0.5742 | 0.9655 | 0.8403 | 119 s |
+| UC3M authors' test (395) | 395 | 491 | 0.8928 | 0.4495 | 0.9608 | 0.8208 | 255 s |
+| UC3M all | 1,975 | 2,547 | 0.8580 | 0.4192 | 0.9238 | 0.8142 | 1,334 s |
+
+- Notes: these are single runs without confidence intervals. The US test set is small (105 images, 129 plates), so its numbers are noisy. Whether the baseline saw our test images is unverifiable (it can only inflate its score, see the Baseline rule). The instance counts equal the label counts of each set (129, 300, 491, 2,547).
+- UC3M has 2,547 plates in 1,975 images. Cost arithmetic for the UC3M OCR run therefore uses 2,547 plates, not 1,975 (no earlier line in this file assumed one plate per image; the correction is recorded here). Arithmetic from the 20-plate timing medians, not a measured run: crop step 2,547 x 0.20 to 0.22 s = 8.5 to 9.3 min; fast-plate-ocr 2,547 x 0.080 s = 3.4 min; PaddleOCR 2,547 x 2.241 s = 95 min; EasyOCR 2,547 x 2.899 s = 123 min (the timing samples had maxima of 20.7 s and 30.0 s, so real totals may be higher).
