@@ -115,6 +115,7 @@ Rules:
 - Torch is NOT a dependency on Colab (preinstalled). PaddlePaddle lives in an optional extra (`ocr-paddle`).
 - `requirements.txt` is deleted once everything is migrated (user approved).
 - Public GitHub repo, code only. Weights and demo go to Hugging Face.
+- One notebook per OCR engine (fast-plate-ocr, EasyOCR, PaddleOCR); no `ENGINE` switch in a shared notebook (decided 2026-11-15; notebook 09 becomes the fast-plate-ocr one, split not yet done).
 - License: AGPL-3.0 (Ultralytics).
 - This is the only planning file. No DATA.md, no `docs/`.
 - Exact commands go in CLAUDE.md "Commands" after M0.
@@ -192,6 +193,10 @@ One at a time; verify, tick, stop.
     | UC3M all | 1,975 | 2,547 | 0.8580 | 0.4192 | 0.9238 | 0.8142 | 1,334 s |
 
   - To do before the full runs: they must be resumable (progress kept so a Colab disconnect does not restart them) and write predictions to a CSV on Drive; plate text is never printed.
+  - M2-2 fast-plate-ocr full run (2026-11-15; `cct-s-v2-global-model`, ONNX on CPU, Colab 2-core Intel Xeon 2.20 GHz; notebooks/09_eval_ocr.ipynb, scored with src/alpr/metrics.py): US result below is usable; the UC3M result is **not trusted and must not be reported** (see the decision log). Not ticked.
+  - To do (UC3M OCR score): find out why the wildcard score is so low. Start with aggregate counts only: prediction lengths, reference lengths, empty predictions, and the number of wrong visible positions among equal-length plates. No plate text is printed, and no alternative scoring rule is tried on the real data. Any bug found gets a decision-log entry; the declared rule stays.
+  - To do (notebook 09): the version at HEAD was committed with saved outputs, `INSTALL = True` and an out-of-order run, so it must be replaced by a clean Restart and Run All before M2 is ticked.
+  - Standing rule (M2 and later): each OCR engine gets its own notebook file (one for fast-plate-ocr, one for EasyOCR, one for PaddleOCR), with no `ENGINE` switch inside a shared notebook. Notebook 09 becomes the fast-plate-ocr one. Renaming and splitting are not done yet; the names of the other two are decided when they are written.
 - [ ] M3 Stage 1: train on CCPD, resumable on Colab
 - [ ] M4 Stage 2: fine-tune on US/EU-weighted mix; US/EU-only ablation; Chinese held-out report; error analysis
 - [ ] M5 Pipeline: detect -> crop -> OCR CLI; final engine choice
@@ -290,3 +295,18 @@ Context: progress presentation on 15 Nov 2026; project due December. No scope cu
 
 - Notes: these are single runs without confidence intervals. The US test set is small (105 images, 129 plates), so its numbers are noisy. Whether the baseline saw our test images is unverifiable (it can only inflate its score, see the Baseline rule). The instance counts equal the label counts of each set (129, 300, 491, 2,547).
 - UC3M has 2,547 plates in 1,975 images. Cost arithmetic for the UC3M OCR run therefore uses 2,547 plates, not 1,975 (no earlier line in this file assumed one plate per image; the correction is recorded here). Arithmetic from the 20-plate timing medians, not a measured run: crop step 2,547 x 0.20 to 0.22 s = 8.5 to 9.3 min; fast-plate-ocr 2,547 x 0.080 s = 3.4 min; PaddleOCR 2,547 x 2.241 s = 95 min; EasyOCR 2,547 x 2.899 s = 123 min (the timing samples had maxima of 20.7 s and 30.0 s, so real totals may be higher).
+
+2026-11-15 (M2-2, fast-plate-ocr full run; Part 2 not finished, M2 not ticked):
+- Engine and setup: fast-plate-ocr `cct-s-v2-global-model`, ONNX on CPU, Colab 2-core Intel Xeon 2.20 GHz, full run of notebooks/09_eval_ocr.ipynb, scored with src/alpr/metrics.py. Declared configuration unchanged. Predictions are on Drive under `reports/m2/` (never printed or committed).
+- US (129 crops; crop step 0.1 s, OCR step 9.0 s = 69 ms per crop; excluded: 40 unreadable, 3 not_plate), scoring as declared (exact match, CER micro):
+
+| Group | Plates | Exact | Exact rate | CER |
+|---|---|---|---|---|
+| confirmed | 65 | 58 | 0.8923 | 0.0275 |
+| confirmed without partial | 61 | 57 | 0.9344 | 0.0157 |
+| confirmed plus guess | 86 | 74 | 0.8605 | 0.0301 |
+| partial (reported separately) | 4 | 1 | 0.2500 | 0.2778 |
+
+- UC3M-LP (2,547 plates; crop step 442 s, OCR step 158 s = 62 ms per plate): the wildcard score came out at 29 of 2,547 (0.0114) over all plates and 9 of 491 (0.0183) on the authors' test plates. **NOT a trusted result and not to be reported:** it is far below the US result with the same engine and it is unexplained. Checked by reading the code: `metrics.wildcard_match`, `uc3m._text` and the crop code match the declared rule (prefix removed from the label only, `*` accepts any one character, equal length required, boxes are the polygon bounding rectangle as fractions of the image). The cause is not yet known. The declared rule (UC3M-LP rule c) stays; no other scoring rule is tried on the real data.
+- Next step (to-do in the M2 entry): diagnose with aggregate counts only (prediction lengths, reference lengths, empty predictions, wrong visible positions among equal-length plates), no plate text printed. Any bug found gets its own decision-log entry.
+- Notebook 09 at HEAD (commit 25d23df) was committed with saved outputs, `INSTALL = True` and an out-of-order run, so it must be replaced by a clean version before it is relied on.
